@@ -1,0 +1,22 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+    "AZURE_STORAGE_TABLE_ACCOUNTS": "accounts",
+    "AZURE_STORAGE_TABLE_MAPPING": "amplitudemapping",
+    "AZURE_STORAGE_TABLE_SCORES": "churnscores",
+    "N8N_SYNC_WEBHOOK_URL": "https://placeholder.example.com/webhook/sync",
+    "ANTHROPIC_API_KEY": "",
+    "HUBSPOT_ACCESS_TOKEN": "",
+    "ZENDESK_SUBDOMAIN": "",
+    "ZENDESK_EMAIL": "",
+    "ZENDESK_TOKEN": "",
+    "INTERCOM_TOKEN": "",
+    "AMPLITUDE_API_KEY": "",
+    "AMPLITUDE_SECRET_KEY": "",
+    "SLACK_BOT_TOKEN": "",
+    "SLACK_SIGNING_SECRET": ""
+  }
+}
