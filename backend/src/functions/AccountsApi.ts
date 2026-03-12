@@ -1,0 +1,141 @@
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
+import { getConfig } from '../config';
+import { AccountStore } from '../services/accountStore';
+import { ScoreStore } from '../services/scoreStore';
+import { MappingStore } from '../services/mappingStore';
+import { AccountSummary } from '../types';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+function makeStores() {
+  const config = getConfig();
+  return {
+    accounts: new AccountStore(config.storageConnectionString, config.tableAccounts),
+    scores: new ScoreStore(config.storageConnectionString, config.tableScores),
+    mappings: new MappingStore(config.storageConnectionString, config.tableMapping),
+  };
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function listAccounts(
+  req: HttpRequest,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
+  if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
+
+  try {
+    const { accounts, scores, mappings } = makeStores();
+    await Promise.all([accounts.ensureTable(), scores.ensureTable(), mappings.ensureTable()]);
+
+    const [allAccounts, todayScores, allMappings] = await Promise.all([
+      accounts.listAccounts(),
+      scores.getAllScoresForDate(todayISO()),
+      mappings.listMappings(),
+    ]);
+
+    const mappingLookup = new Map(allMappings.map(m => [m.hubspotId, m.amplitudeAlias]));
+
+    const missingIds = allAccounts
+      .filter(a => !todayScores.has(a.hubspotId))
+      .map(a => a.hubspotId);
+
+    const fallbackScores = new Map(
+      await Promise.all(
+        missingIds.map(async id => {
+          const s = await scores.getLatestScoreForAccount(id);
+          return [id, s] as const;
+        })
+      )
+    );
+
+    const summary: AccountSummary[] = allAccounts.map(account => {
+      const scoreRow = todayScores.get(account.hubspotId) ?? fallbackScores.get(account.hubspotId) ?? null;
+      return {
+        ...account,
+        score: scoreRow?.score ?? null,
+        tier: scoreRow?.tier ?? null,
+        scoreDelta: scoreRow?.scoreDelta ?? null,
+        amplitudeAlias: mappingLookup.get(account.hubspotId) ?? null,
+      };
+    });
+
+    return {
+      status: 200,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify(summary),
+    };
+  } catch (err: any) {
+    context.error('listAccounts failed:', err);
+    return { status: 500, headers: CORS_HEADERS, body: `Internal error: ${err.message}` };
+  }
+}
+
+async function getAccount(
+  req: HttpRequest,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
+  if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
+
+  try {
+    const hubspotId = req.params.id;
+    const { accounts, scores, mappings } = makeStores();
+
+    const [account, mapping] = await Promise.all([
+      accounts.getById(hubspotId),
+      mappings.getMapping(hubspotId),
+    ]);
+
+    if (!account) {
+      return { status: 404, headers: CORS_HEADERS, body: 'Account not found.' };
+    }
+
+    const [latestScore, history] = await Promise.all([
+      scores.getLatestScoreForAccount(hubspotId),
+      scores.getScoreHistory(hubspotId, 7),
+    ]);
+
+    return {
+      status: 200,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...account,
+        score: latestScore?.score ?? null,
+        tier: latestScore?.tier ?? null,
+        scoreDelta: latestScore?.scoreDelta ?? null,
+        amplitudeAlias: mapping?.amplitudeAlias ?? null,
+        scoreBreakdown: latestScore
+          ? {
+              dauWauTrend: latestScore.dauWauTrend,
+              featureAdoption: latestScore.featureAdoption,
+              lastLoginDays: latestScore.lastLoginDays,
+            }
+          : null,
+        scoreHistory: history,
+      }),
+    };
+  } catch (err: any) {
+    context.error('getAccount failed:', err);
+    return { status: 500, headers: CORS_HEADERS, body: `Internal error: ${err.message}` };
+  }
+}
+
+app.http('ListAccounts', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'function',
+  route: 'accounts',
+  handler: listAccounts,
+});
+
+app.http('GetAccount', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'function',
+  route: 'accounts/{id}',
+  handler: getAccount,
+});
