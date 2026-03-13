@@ -13,26 +13,8 @@ async function triggerSync(
 ): Promise<HttpResponseInit> {
   if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
 
-  const config = getConfig();
-
-  try {
-    const response = await fetch(config.n8nSyncWebhookUrl, { method: 'POST' });
-    if (!response.ok) {
-      context.error(`n8n webhook returned ${response.status}`);
-      return {
-        status: 502,
-        headers: CORS_HEADERS,
-        body: `Failed to trigger sync: n8n returned ${response.status}`,
-      };
-    }
-  } catch (err: any) {
-    context.error('Failed to call n8n webhook:', err);
-    return {
-      status: 502,
-      headers: CORS_HEADERS,
-      body: `Failed to trigger sync: ${err.message}`,
-    };
-  }
+  // TODO: Task 7 - call runSync() instead of n8n webhook
+  context.log('POST /api/sync received (runSync not yet implemented)');
 
   return {
     status: 200,
