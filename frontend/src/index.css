@@ -1,3 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Figtree', sans-serif;
+    color: #26262B;
+    background-color: #F7F7FC;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Custom scrollbar for detail panel */
+.bv-scrollbar::-webkit-scrollbar { width: 4px; }
+.bv-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.bv-scrollbar::-webkit-scrollbar-thumb { background: #DEDEE5; border-radius: 4px; }
+.bv-scrollbar::-webkit-scrollbar-thumb:hover { background: #C2C2CD; }
+
+/* Detail panel slide-in */
+.panel-enter {
+  animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);   opacity: 1; }
+}
+
+/* Select arrow reset */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8A99' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  padding-right: 2rem;
+  appearance: none;
+}

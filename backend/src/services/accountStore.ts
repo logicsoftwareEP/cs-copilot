@@ -11,9 +11,15 @@ interface AccountEntity {
   renewalDate: string;
   hubspotUrl: string;
   syncedAt: string;
+  licenses?: number | null;
 }
 
-function toEntity(account: HubspotAccount): AccountEntity {
+/**
+ * Map a HubspotAccount to a Table Storage entity for sync writes.
+ * NOTE: `licenses` is intentionally excluded so that Merge mode
+ * preserves any manually-entered value already in the table.
+ */
+function toEntity(account: HubspotAccount): Omit<AccountEntity, 'licenses'> {
   return {
     partitionKey: 'accounts',
     rowKey: account.hubspotId,
@@ -37,6 +43,7 @@ function fromEntity(entity: AccountEntity): HubspotAccount {
     renewalDate: entity.renewalDate,
     hubspotUrl: entity.hubspotUrl,
     syncedAt: entity.syncedAt,
+    licenses: entity.licenses ?? null,
   };
 }
 
@@ -55,8 +62,12 @@ export class AccountStore {
     }
   }
 
+  /**
+   * Upsert account data from HubSpot using Merge mode so that manually-entered
+   * fields (e.g. `licenses`) are never overwritten by the nightly sync.
+   */
   async upsertAccount(account: HubspotAccount): Promise<void> {
-    await this.client.upsertEntity(toEntity(account), 'Replace');
+    await this.client.upsertEntity(toEntity(account), 'Merge');
   }
 
   async listAccounts(): Promise<HubspotAccount[]> {
@@ -77,5 +88,16 @@ export class AccountStore {
       if (err?.statusCode === 404) return null;
       throw err;
     }
+  }
+
+  /**
+   * Update the license count for a single account.
+   * Uses Merge mode so only `licenses` is written; all other fields are preserved.
+   */
+  async updateLicenses(hubspotId: string, licenses: number | null): Promise<void> {
+    await this.client.upsertEntity(
+      { partitionKey: 'accounts', rowKey: hubspotId, licenses },
+      'Merge'
+    );
   }
 }

@@ -4,37 +4,45 @@ import { HealthTier } from '../types';
 export interface HealthScoreResult {
   score: number | null;
   tier: HealthTier | 'unmapped';
-  featureAdoption: number | null;
+  licenseUtilization: number | null;
+  monthlyActiveUsers: number | null;
 }
 
 /**
- * Compute health score from Amplitude signals using deterministic rules.
+ * Compute health score from Amplitude signals and account license count.
  *
  * Scoring breakdown:
- * - DAU/WAU trend (0–40 points)
- * - Feature adoption (0–35 points)
- * - Last login (0–25 points)
- * Total: 0–100 points
+ * - DAU/WAU trend    (0–40 points) — same bands regardless of licenses
+ * - License utilisation (0–35 points) — MAU ÷ licenses; omitted when licenses not set
+ * - Last login       (0–25 points)
  *
- * If all three signals are null, score is null and tier is 'unmapped'.
+ * Normalisation:
+ *   maxPossible = licenses !== null ? 100 : 65
+ *   finalScore  = Math.round(rawScore / maxPossible × 100)
+ *
+ * This ensures the score is always expressed as a percentage of available signals.
+ * When licenses are not yet entered, the score is normalised out of 65 (max from
+ * the two Amplitude signals we can still compute).
+ *
+ * Returns score=null and tier='unmapped' only when ALL Amplitude signals are null.
  */
-export function computeScore(signals: AmplitudeSignals): HealthScoreResult {
-  const { dauWauTrend, featureAdoption, lastLoginDays } = signals;
+export function computeScore(
+  signals: AmplitudeSignals,
+  licenses: number | null
+): HealthScoreResult {
+  const { dauWauTrend, monthlyActiveUsers, lastLoginDays } = signals;
 
-  // Check if all signals are null
-  if (
-    dauWauTrend === null &&
-    featureAdoption === null &&
-    lastLoginDays === null
-  ) {
+  // If all Amplitude signals are null there is nothing to score
+  if (dauWauTrend === null && monthlyActiveUsers === null && lastLoginDays === null) {
     return {
       score: null,
       tier: 'unmapped',
-      featureAdoption,
+      licenseUtilization: null,
+      monthlyActiveUsers: null,
     };
   }
 
-  // Score component 1: DAU/WAU trend (0–40 points)
+  // ── Component 1: DAU/WAU trend (0–40 points) ──────────────────────────────
   let dauWauScore = 0;
   if (dauWauTrend !== null) {
     if (dauWauTrend >= 0.1) {
@@ -48,13 +56,27 @@ export function computeScore(signals: AmplitudeSignals): HealthScoreResult {
     }
   }
 
-  // Score component 2: Feature adoption (0–35 points)
-  let adoptionScore = 0;
-  if (featureAdoption !== null) {
-    adoptionScore = Math.round(featureAdoption * 35);
+  // ── Component 2: License utilisation (0–35 points) ───────────────────────
+  let licenseUtilization: number | null = null;
+  let licenseScore = 0;
+
+  if (licenses !== null && licenses > 0 && monthlyActiveUsers !== null) {
+    licenseUtilization = Math.min(1, monthlyActiveUsers / licenses);
+
+    if (licenseUtilization >= 0.8) {
+      licenseScore = 35;
+    } else if (licenseUtilization >= 0.6) {
+      licenseScore = 25;
+    } else if (licenseUtilization >= 0.4) {
+      licenseScore = 15;
+    } else if (licenseUtilization >= 0.2) {
+      licenseScore = 5;
+    } else {
+      licenseScore = 0;
+    }
   }
 
-  // Score component 3: Last login (0–25 points)
+  // ── Component 3: Last login (0–25 points) ────────────────────────────────
   let loginScore = 0;
   if (lastLoginDays !== null) {
     if (lastLoginDays < 7) {
@@ -68,10 +90,12 @@ export function computeScore(signals: AmplitudeSignals): HealthScoreResult {
     }
   }
 
-  // Total score
-  const score = dauWauScore + adoptionScore + loginScore;
+  // ── Normalise ─────────────────────────────────────────────────────────────
+  const rawScore = dauWauScore + licenseScore + loginScore;
+  const maxPossible = licenses !== null ? 100 : 65;
+  const score = Math.round((rawScore / maxPossible) * 100);
 
-  // Assign tier based on score
+  // ── Tier ──────────────────────────────────────────────────────────────────
   let tier: HealthTier | 'unmapped';
   if (score >= 80) {
     tier = 'healthy';
@@ -86,6 +110,7 @@ export function computeScore(signals: AmplitudeSignals): HealthScoreResult {
   return {
     score,
     tier,
-    featureAdoption,
+    licenseUtilization,
+    monthlyActiveUsers,
   };
 }

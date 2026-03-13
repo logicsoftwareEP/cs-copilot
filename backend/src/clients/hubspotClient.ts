@@ -130,6 +130,7 @@ export async function searchActiveCompanies(
         renewalDate: result.properties.renewal_date ?? '',
         hubspotUrl:  result.properties.hs_object_url ?? '',
         syncedAt:    new Date().toISOString(),
+        licenses:    null, // manually entered in the UI; never synced from HubSpot
       });
     }
 

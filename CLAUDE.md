@@ -84,6 +84,14 @@ Three Azure Table Storage tables:
 - **Env vars needed**: `HUBSPOT_API_KEY`, `AMPLITUDE_API_KEY`, `AMPLITUDE_SECRET_KEY` (required); `AMPLITUDE_ACCOUNT_PROPERTY` (default: `account_name`), `AMPLITUDE_FEATURES_TOTAL` (default: `10`)
 - **Deployment: pending**
 
+## Testing Notes
+
+- **Base64 / Basic Auth on Windows**: do NOT use `echo -n "key:secret" | base64` in bash — Windows Git Bash can silently include a trailing CR, producing a wrong hash. Use Python instead:
+  ```bash
+  python3 -c "import base64; print(base64.b64encode(b'key:secret').decode())"
+  ```
+  Node's `Buffer.from('key:secret').toString('base64')` in deployed code is unaffected.
+
 Full spec: `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 Full plan: `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
 Progress: `progress.md`

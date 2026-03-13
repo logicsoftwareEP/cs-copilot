@@ -1,7 +1,7 @@
-import { AccountSummary } from '../types';
+import { AccountSummary, AccountDetail } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
-const API_KEY = import.meta.env.VITE_API_KEY ?? '';
+const API_KEY  = import.meta.env.VITE_API_KEY ?? '';
 
 function withCode(url: string): string {
   return API_KEY ? `${url}?code=${encodeURIComponent(API_KEY)}` : url;
@@ -13,7 +13,7 @@ export async function getAccounts(): Promise<AccountSummary[]> {
   return res.json();
 }
 
-export async function getAccount(hubspotId: string): Promise<AccountSummary> {
+export async function getAccountDetail(hubspotId: string): Promise<AccountDetail> {
   const res = await fetch(withCode(`${BASE_URL}/accounts/${encodeURIComponent(hubspotId)}`));
   if (!res.ok) throw new Error(`Failed to fetch account: ${res.status}`);
   return res.json();
@@ -44,4 +44,16 @@ export async function deleteMapping(hubspotId: string): Promise<void> {
 export async function triggerSync(): Promise<void> {
   const res = await fetch(withCode(`${BASE_URL}/sync`), { method: 'POST' });
   if (!res.ok) throw new Error(`Sync trigger failed: ${res.status}`);
+}
+
+export async function updateAccountLicenses(hubspotId: string, licenses: number | null): Promise<void> {
+  const res = await fetch(withCode(`${BASE_URL}/accounts/${encodeURIComponent(hubspotId)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ licenses }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Update failed: ${res.status}`);
+  }
 }

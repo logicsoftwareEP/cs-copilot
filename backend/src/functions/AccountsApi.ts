@@ -7,7 +7,7 @@ import { AccountSummary } from '../types';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, PATCH, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -81,10 +81,33 @@ async function getAccount(
   req: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
+  const hubspotId = req.params.id;
+
   if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
 
+  // ── PATCH: update license count ────────────────────────────────────────────
+  if (req.method === 'PATCH') {
+    try {
+      const body = await req.json() as { licenses?: number | null };
+      const licenses = body.licenses !== undefined ? body.licenses : null;
+
+      if (licenses !== null && (typeof licenses !== 'number' || licenses < 0)) {
+        return { status: 400, headers: CORS_HEADERS, body: 'licenses must be a non-negative number or null.' };
+      }
+
+      const { accounts } = makeStores();
+      await accounts.ensureTable();
+      await accounts.updateLicenses(hubspotId, licenses);
+
+      return { status: 204, headers: CORS_HEADERS };
+    } catch (err: any) {
+      context.error('updateLicenses failed:', err);
+      return { status: 500, headers: CORS_HEADERS, body: `Internal error: ${err.message}` };
+    }
+  }
+
+  // ── GET: account detail with score breakdown ───────────────────────────────
   try {
-    const hubspotId = req.params.id;
     const { accounts, scores, mappings } = makeStores();
 
     const [account, mapping] = await Promise.all([
@@ -113,7 +136,8 @@ async function getAccount(
         scoreBreakdown: latestScore
           ? {
               dauWauTrend: latestScore.dauWauTrend,
-              featureAdoption: latestScore.featureAdoption,
+              monthlyActiveUsers: latestScore.monthlyActiveUsers,
+              licenseUtilization: latestScore.licenseUtilization,
               lastLoginDays: latestScore.lastLoginDays,
             }
           : null,
@@ -133,8 +157,9 @@ app.http('ListAccounts', {
   handler: listAccounts,
 });
 
+// Single handler for GET + PATCH + OPTIONS on accounts/{id}
 app.http('GetAccount', {
-  methods: ['GET', 'OPTIONS'],
+  methods: ['GET', 'PATCH', 'OPTIONS'],
   authLevel: 'function',
   route: 'accounts/{id}',
   handler: getAccount,

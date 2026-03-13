@@ -7,7 +7,6 @@ export interface Config {
   amplitudeApiKey: string;
   amplitudeSecretKey: string;
   amplitudeAccountProperty: string;
-  amplitudeFeaturesTotal: number;
 }
 
 function requireEnv(name: string): string {
@@ -26,6 +25,5 @@ export function getConfig(): Config {
     amplitudeApiKey: requireEnv('AMPLITUDE_API_KEY'),
     amplitudeSecretKey: requireEnv('AMPLITUDE_SECRET_KEY'),
     amplitudeAccountProperty: process.env.AMPLITUDE_ACCOUNT_PROPERTY ?? 'account_name',
-    amplitudeFeaturesTotal: Number(process.env.AMPLITUDE_FEATURES_TOTAL ?? '10'),
   };
 }

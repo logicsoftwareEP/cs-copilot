@@ -1,6 +1,6 @@
 # CS Copilot - Progress
 
-## Status: MVP Code Complete — Azure Functions handles all sync (n8n removed 2026-03-12)
+## Status: Live — Licence utilisation metric + sortable Licences column added (2026-03-13)
 
 **Spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 **Plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
@@ -39,13 +39,23 @@
 
 ---
 
-## Validation Snapshot (2026-03-12)
+## Validation Snapshot (2026-03-13)
 
 - Backend TypeScript build: **clean**
-- Backend tests: **57/57 passing** across 5 suites (accountStore, mappingStore, scoreStore, healthScoreService, SyncRunner)
-- Frontend TypeScript + Vite build: **clean** (191 kB JS, 12 kB CSS)
-- Unused Phase 0 dependencies removed (117 packages)
-- n8n dependency eliminated
+- Backend tests: **61/61 passing** across 5 suites
+- Frontend TypeScript + Vite build: **clean** (215 kB JS, 19 kB CSS)
+- Backend + frontend deployed to Azure
+
+### 2026-03-13 — Licence utilisation metric
+- Replaced broken `featureAdoption` metric (active days ÷ 10, always maxed out) with **licence utilisation** (MAU ÷ paid seats)
+- Added `licenses` field to `HubspotAccount` — manually entered per account in the portfolio grid
+- `upsertAccount` changed to `Merge` mode so nightly sync never overwrites manually-entered `licenses`
+- New `PATCH /api/accounts/{id}` endpoint for updating licence count
+- Amplitude `fetchFeatureAdoption` replaced with `fetchMonthlyActiveUsers` (30-day unique users, `i=30`)
+- Score normalisation: `maxPossible = 65` (no licences) or `100` (licences set) — always expressed as % of available signals
+- SyncRunner now reloads stored accounts after HubSpot upsert to pick up manually-entered `licenses`
+- Portfolio table has sortable **Licences** column with click-to-edit inline input
+- Detail panel score breakdown updated: shows licence utilisation %, normalisation note, updated scoring key
 
 ---
 
@@ -55,7 +65,7 @@
 
 Sync runs: (a) nightly timer trigger at 2 AM UTC, (b) on-demand via `POST /api/sync` button in the frontend.
 
-**Health Score:** 100% Amplitude for MVP. DAU/WAU trend (0-40 pts) + Feature adoption (0-35 pts) + Last active login (0-25 pts) = 0-100.
+**Health Score:** DAU/WAU trend (0–40 pts) + Licence utilisation MAU÷seats (0–35 pts) + Last active login (0–25 pts). Normalised to 65 when licences not yet entered, 100 when set.
 
 **Tiers:** Healthy (80-100), Watch (60-79), At Risk (40-59), Critical (0-39), Unmapped (no Amplitude alias).
 

@@ -40,10 +40,14 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
     const companies = await searchActiveCompanies(config.hubspotApiKey);
     log(`Fetched ${companies.length} active companies from HubSpot`);
 
-    // Upsert each company into the account store
+    // Upsert each company into the account store (Merge mode preserves licenses)
     for (const company of companies) {
       await accountStore.upsertAccount(company);
     }
+
+    // Reload stored accounts to pick up manually-entered licenses
+    const storedAccounts = await accountStore.listAccounts();
+    const storedMap = new Map(storedAccounts.map(a => [a.hubspotId, a]));
 
     // Build mapping lookup: hubspotId → amplitudeAlias
     const mappingList = await mappingStore.listMappings();
@@ -74,7 +78,8 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           score: null,
           tier: 'unmapped',
           dauWauTrend: null,
-          featureAdoption: null,
+          monthlyActiveUsers: null,
+          licenseUtilization: null,
           lastLoginDays: null,
           scoreDelta: null,
           computedAt: new Date().toISOString(),
@@ -88,10 +93,11 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           config.amplitudeSecretKey,
           amplitudeAlias,
           config.amplitudeAccountProperty,
-          config.amplitudeFeaturesTotal,
         );
 
-        const { score, tier } = computeScore(signals);
+        // Use stored licenses (manually entered) rather than HubSpot-synced data
+        const licenses = storedMap.get(company.hubspotId)?.licenses ?? null;
+        const { score, tier, licenseUtilization, monthlyActiveUsers } = computeScore(signals, licenses);
 
         // Calculate score delta vs yesterday
         const yesterdayScore = yesterdayScores.get(company.hubspotId);
@@ -110,7 +116,8 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           score,
           tier,
           dauWauTrend: signals.dauWauTrend,
-          featureAdoption: signals.featureAdoption,
+          monthlyActiveUsers,
+          licenseUtilization,
           lastLoginDays: signals.lastLoginDays,
           scoreDelta,
           computedAt: new Date().toISOString(),
@@ -130,7 +137,8 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           score: null,
           tier: 'unmapped',
           dauWauTrend: null,
-          featureAdoption: null,
+          monthlyActiveUsers: null,
+          licenseUtilization: null,
           lastLoginDays: null,
           scoreDelta: null,
           computedAt: new Date().toISOString(),

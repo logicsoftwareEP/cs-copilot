@@ -7,7 +7,8 @@ interface ScoreEntity {
   score: number | null;
   tier: string;
   dauWauTrend: number | null;
-  featureAdoption: number | null;
+  monthlyActiveUsers: number | null;
+  licenseUtilization: number | null;
   lastLoginDays: number | null;
   scoreDelta: number | null;
   computedAt: string;
@@ -20,7 +21,8 @@ function fromEntity(entity: ScoreEntity): ChurnScore {
     score: entity.score,
     tier: entity.tier as HealthTier | 'unmapped',
     dauWauTrend: entity.dauWauTrend,
-    featureAdoption: entity.featureAdoption,
+    monthlyActiveUsers: entity.monthlyActiveUsers ?? null,
+    licenseUtilization: entity.licenseUtilization ?? null,
     lastLoginDays: entity.lastLoginDays,
     scoreDelta: entity.scoreDelta,
     computedAt: entity.computedAt,
@@ -101,7 +103,8 @@ export class ScoreStore {
       score: score.score,
       tier: score.tier,
       dauWauTrend: score.dauWauTrend,
-      featureAdoption: score.featureAdoption,
+      monthlyActiveUsers: score.monthlyActiveUsers,
+      licenseUtilization: score.licenseUtilization,
       lastLoginDays: score.lastLoginDays,
       scoreDelta: score.scoreDelta,
       computedAt: score.computedAt,

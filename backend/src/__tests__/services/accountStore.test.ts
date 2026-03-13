@@ -29,6 +29,7 @@ const SAMPLE: HubspotAccount = {
   renewalDate: '2026-05-01',
   hubspotUrl: 'https://app.hubspot.com/contacts/123',
   syncedAt: '2026-03-11T02:00:00.000Z',
+  licenses: null,
 };
 
 describe('AccountStore', () => {
@@ -48,7 +49,7 @@ describe('AccountStore', () => {
         accountName: 'Acme Corp',
         arr: 48000,
       }),
-      'Replace'
+      'Merge'
     );
   });
 

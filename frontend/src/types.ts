@@ -7,6 +7,7 @@ export interface HubspotAccount {
   renewalDate: string;
   hubspotUrl: string;
   syncedAt: string;
+  licenses: number | null;
 }
 
 export interface AccountSummary extends HubspotAccount {
@@ -14,6 +15,18 @@ export interface AccountSummary extends HubspotAccount {
   tier: HealthTier | 'unmapped' | null;
   scoreDelta: number | null;
   amplitudeAlias: string | null;
+}
+
+export interface ScoreBreakdown {
+  dauWauTrend: number | null;
+  monthlyActiveUsers: number | null;
+  licenseUtilization: number | null;
+  lastLoginDays: number | null;
+}
+
+export interface AccountDetail extends AccountSummary {
+  scoreBreakdown: ScoreBreakdown | null;
+  scoreHistory: ChurnScore[];
 }
 
 export interface AmplitudeMapping {
@@ -30,7 +43,8 @@ export interface ChurnScore {
   score: number | null;
   tier: HealthTier | 'unmapped';
   dauWauTrend: number | null;
-  featureAdoption: number | null;
+  monthlyActiveUsers: number | null;
+  licenseUtilization: number | null;
   lastLoginDays: number | null;
   scoreDelta: number | null;
   computedAt: string;

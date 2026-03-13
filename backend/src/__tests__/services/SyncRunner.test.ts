@@ -36,6 +36,7 @@ const MockAccountStore = AccountStore as jest.MockedClass<typeof AccountStore>;
 const MockMappingStore = MappingStore as jest.MockedClass<typeof MappingStore>;
 const MockScoreStore = ScoreStore as jest.MockedClass<typeof ScoreStore>;
 
+// HubSpot does not carry licenses — that is entered manually after sync
 const COMPANY_A: HubspotAccount = {
   hubspotId: 'hs-001',
   accountName: 'Alpha Corp',
@@ -45,6 +46,7 @@ const COMPANY_A: HubspotAccount = {
   renewalDate: '2026-12-01',
   hubspotUrl: 'https://app.hubspot.com/contacts/1',
   syncedAt: '2026-03-12T02:00:00.000Z',
+  licenses: null,
 };
 
 const COMPANY_B: HubspotAccount = {
@@ -56,20 +58,27 @@ const COMPANY_B: HubspotAccount = {
   renewalDate: '2026-06-01',
   hubspotUrl: 'https://app.hubspot.com/contacts/2',
   syncedAt: '2026-03-12T02:00:00.000Z',
+  licenses: null,
 };
 
+// GOOD_SIGNALS: dauWauTrend ≥0.1 (40pts) + monthlyActiveUsers (unused, licenses null) + lastLoginDays <7 (25pts)
+// With no licenses: rawScore = 40+25 = 65, maxPossible = 65 → finalScore = 100
 const GOOD_SIGNALS: AmplitudeSignals = {
   dauWauTrend: 0.15,
-  featureAdoption: 0.6,
+  monthlyActiveUsers: 50,
   lastLoginDays: 3,
 };
 
 function setupStoreMocks(opts: {
   mappings?: Array<{ hubspotId: string; amplitudeAlias: string }>;
   yesterdayScores?: Map<string, { score: number | null }>;
+  storedAccounts?: HubspotAccount[];
 } = {}) {
   const upsertAccount = jest.fn().mockResolvedValue(undefined);
   const ensureTable = jest.fn().mockResolvedValue(undefined);
+  const listAccounts = jest.fn().mockResolvedValue(
+    opts.storedAccounts ?? [COMPANY_A, COMPANY_B]
+  );
   const listMappings = jest.fn().mockResolvedValue(
     (opts.mappings ?? []).map(m => ({
       hubspotId: m.hubspotId,
@@ -87,8 +96,9 @@ function setupStoreMocks(opts: {
   MockAccountStore.mockImplementation(() => ({
     ensureTable,
     upsertAccount,
-    listAccounts: jest.fn(),
+    listAccounts,
     getById: jest.fn(),
+    updateLicenses: jest.fn(),
   } as any));
 
   MockMappingStore.mockImplementation(() => ({
@@ -212,11 +222,8 @@ describe('runSync', () => {
     expect(result.errors[0]).toContain('HubSpot 503');
   });
 
-  it('score delta calculation: yesterday score=70, today=80 → scoreDelta=10', async () => {
-    const todayISO = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayISO = yesterday.toISOString().slice(0, 10);
+  it('score delta calculation: yesterday score=70, today score uses licenses=null → score=100, delta=30', async () => {
+    const yesterdayISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
     const yesterdayScoreMap = new Map<string, any>([
       ['hs-001', { hubspotId: 'hs-001', date: yesterdayISO, score: 70, tier: 'watch' }],
@@ -225,23 +232,39 @@ describe('runSync', () => {
     const { upsertScore } = setupStoreMocks({
       mappings: [{ hubspotId: 'hs-001', amplitudeAlias: 'alpha' }],
       yesterdayScores: yesterdayScoreMap,
+      storedAccounts: [{ ...COMPANY_A, licenses: null }],
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
-
-    // Signals that produce score=80: dauWauTrend>=0.1 (40pts) + featureAdoption=0 (0pts) + lastLoginDays<7 (25pts) = 65
-    // Use signals that give exactly 80: dauWauTrend=0.15 (40) + featureAdoption ~=1.0 (35) + lastLoginDays<7 (25) = 100
-    // Actually let's use signals that produce a known score to verify delta
-    // dauWauTrend=0.15 → 40pts, featureAdoption=0.6 → 21pts, lastLoginDays=3 → 25pts = 86 points
-    // So delta = 86 - 70 = 16
-    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS); // score = 86
+    // GOOD_SIGNALS + licenses=null: dauWau(40) + login(25) = 65/65*100 = 100
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
 
     const result = await runSync();
 
     expect(result.scored).toBe(1);
 
     const scoreCall = upsertScore.mock.calls[0][0];
-    expect(scoreCall.score).toBe(86);
-    expect(scoreCall.scoreDelta).toBe(16); // 86 - 70
+    expect(scoreCall.score).toBe(100);
+    expect(scoreCall.scoreDelta).toBe(30); // 100 - 70
+  });
+
+  it('uses stored licenses from accountStore (not HubSpot data) for scoring', async () => {
+    // HubSpot returns licenses=null, but stored account has licenses=100
+    const storedA: HubspotAccount = { ...COMPANY_A, licenses: 100 };
+
+    const { upsertScore } = setupStoreMocks({
+      mappings: [{ hubspotId: 'hs-001', amplitudeAlias: 'alpha' }],
+      storedAccounts: [storedA],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]); // licenses=null from HubSpot
+    // dauWau ≥0.1 (40) + MAU 50/100=50% ≥40% (15) + login <7 (25) = 80/100 = 80
+    mockFetchSignals.mockResolvedValue({ dauWauTrend: 0.15, monthlyActiveUsers: 50, lastLoginDays: 3 });
+
+    await runSync();
+
+    const scoreCall = upsertScore.mock.calls[0][0];
+    expect(scoreCall.score).toBe(80); // uses licenses=100 from store
+    expect(scoreCall.licenseUtilization).toBeCloseTo(0.5);
   });
 });

@@ -6,9 +6,10 @@ export interface HubspotAccount {
   csmName: string;
   csmEmail: string;
   arr: number;
-  renewalDate: string; // ISO date YYYY-MM-DD or empty string
+  renewalDate: string;   // ISO date YYYY-MM-DD or empty string
   hubspotUrl: string;
-  syncedAt: string;    // ISO timestamp of last sync
+  syncedAt: string;      // ISO timestamp of last sync
+  licenses: number | null; // total paid licences; null = not yet entered
 }
 
 // Mapping between a HubSpot company and its Amplitude account alias.
@@ -24,13 +25,14 @@ export interface AmplitudeMapping {
 // PartitionKey = hubspotId, RowKey = YYYY-MM-DD
 export interface ChurnScore {
   hubspotId: string;
-  date: string;        // YYYY-MM-DD
+  date: string;                    // YYYY-MM-DD
   score: number | null;
   tier: HealthTier | 'unmapped';
-  dauWauTrend: number | null;    // fractional change, e.g. -0.15 = -15%
-  featureAdoption: number | null; // fraction used/total, e.g. 0.42
-  lastLoginDays: number | null;  // integer days
-  scoreDelta: number | null;     // vs previous day
+  dauWauTrend: number | null;      // fractional change e.g. -0.15 = -15%
+  monthlyActiveUsers: number | null; // unique active users in the last 30 days (MAU)
+  licenseUtilization: number | null; // MAU / licenses, 0–1; null when licenses not set
+  lastLoginDays: number | null;    // integer days since last session start
+  scoreDelta: number | null;       // vs previous day
   computedAt: string;
 }
 
@@ -39,7 +41,7 @@ export interface AccountSummary extends HubspotAccount {
   score: number | null;
   tier: HealthTier | 'unmapped' | null;
   scoreDelta: number | null;
-  amplitudeAlias: string | null; // null = not mapped yet
+  amplitudeAlias: string | null;   // null = not mapped yet
 }
 
 export type HealthTier = 'healthy' | 'watch' | 'at-risk' | 'critical';

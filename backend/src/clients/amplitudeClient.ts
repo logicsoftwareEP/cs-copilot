@@ -1,7 +1,7 @@
 export interface AmplitudeSignals {
-  dauWauTrend: number | null;    // fractional change, e.g. -0.15 = -15%
-  featureAdoption: number | null; // fraction of features used, e.g. 0.42
-  lastLoginDays: number | null;  // integer days since last login
+  dauWauTrend: number | null;       // fractional change, e.g. -0.15 = -15%
+  monthlyActiveUsers: number | null; // unique active users in the last 30 days
+  lastLoginDays: number | null;     // integer days since last login
 }
 
 interface SegmentationResponse {
@@ -119,21 +119,15 @@ async function fetchDauWauTrend(
 }
 
 /**
- * Fetch feature adoption (30 days, count of active days / total features)
+ * Fetch Monthly Active Users (30-day unique users) for an account.
+ * Uses Amplitude Segmentation API with i=30 to get the aggregate count
+ * for the full 30-day window.
  */
-/**
- * NOTE: True feature adoption (distinct features used / total features) requires
- * per-feature event queries or the Amplitude Behavioral Cohorts API, which needs
- * a configured feature event list. As a proxy, we count "active days in 30d /
- * featuresTotal" — a coarser signal that still captures engagement breadth trends.
- * Replace with per-feature queries once feature event names are configured.
- */
-async function fetchFeatureAdoption(
+async function fetchMonthlyActiveUsers(
   apiKey: string,
   secretKey: string,
   accountAlias: string,
-  accountProperty: string,
-  featuresTotal: number
+  accountProperty: string
 ): Promise<number | null> {
   try {
     const startDate = toAmplitudeDate(daysAgo(30));
@@ -151,7 +145,7 @@ async function fetchFeatureAdoption(
     const params = new URLSearchParams({
       e: JSON.stringify({ event_type: '_active' }),
       m: 'uniques',
-      i: '1',
+      i: '30',
       start: startDate,
       end: endDate,
       filters,
@@ -169,7 +163,7 @@ async function fetchFeatureAdoption(
 
     if (!response.ok) {
       console.warn(
-        `Amplitude feature adoption query failed: ${response.status} ${response.statusText}`
+        `Amplitude MAU query failed: ${response.status} ${response.statusText}`
       );
       return null;
     }
@@ -180,18 +174,10 @@ async function fetchFeatureAdoption(
       return null;
     }
 
-    const dailyValues = data.data.series[0];
-
-    // Count days with > 0 active users
-    const activeDays = dailyValues.filter((val) => val > 0).length;
-
-    // Clamp to [0, 1]
-    let adoption = activeDays / featuresTotal;
-    adoption = Math.max(0, Math.min(1, adoption));
-
-    return adoption;
+    // With i=30, the API returns a single aggregate value for the 30-day window
+    return data.data.series[0][0] ?? null;
   } catch (error) {
-    console.warn('Error fetching feature adoption:', error);
+    console.warn('Error fetching monthly active users:', error);
     return null;
   }
 }
@@ -288,24 +274,17 @@ export async function fetchSignals(
   apiKey: string,
   secretKey: string,
   accountAlias: string,
-  accountProperty: string,
-  featuresTotal: number
+  accountProperty: string
 ): Promise<AmplitudeSignals> {
-  const [dauWauTrend, featureAdoption, lastLoginDays] = await Promise.all([
+  const [dauWauTrend, monthlyActiveUsers, lastLoginDays] = await Promise.all([
     fetchDauWauTrend(apiKey, secretKey, accountAlias, accountProperty),
-    fetchFeatureAdoption(
-      apiKey,
-      secretKey,
-      accountAlias,
-      accountProperty,
-      featuresTotal
-    ),
+    fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty),
     fetchLastLoginDays(apiKey, secretKey, accountAlias, accountProperty),
   ]);
 
   return {
     dauWauTrend,
-    featureAdoption,
+    monthlyActiveUsers,
     lastLoginDays,
   };
 }
