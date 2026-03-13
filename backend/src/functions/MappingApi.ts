@@ -96,21 +96,18 @@ async function deleteMapping(
   return { status: 204, headers: CORS_HEADERS };
 }
 
-app.http('ListMappings', {
-  methods: ['GET', 'OPTIONS'],
+app.http('MappingCollection', {
+  methods: ['GET', 'POST', 'OPTIONS'],
   authLevel: 'function',
   route: 'mapping',
-  handler: listMappings,
+  handler: async (req, context) => {
+    if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
+    if (req.method === 'POST') return upsertMapping(req, context);
+    return listMappings(req, context);
+  },
 });
 
-app.http('UpsertMapping', {
-  methods: ['POST', 'OPTIONS'],
-  authLevel: 'function',
-  route: 'mapping',
-  handler: upsertMapping,
-});
-
-app.http('DeleteMapping', {
+app.http('MappingItem', {
   methods: ['DELETE', 'OPTIONS'],
   authLevel: 'function',
   route: 'mapping/{id}',
