@@ -314,7 +314,7 @@ describe('healthScoreService', () => {
       expect(result.tier).toBe('watch');
     });
 
-    it('assigns watch tier for score=79', () => {
+    it('assigns healthy tier for score 91 (40+35+16)', () => {
       const signals: AmplitudeSignals = {
         dauWauTrend: 0.1, // 40
         featureAdoption: 1.0, // 35

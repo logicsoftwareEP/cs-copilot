@@ -121,6 +121,13 @@ async function fetchDauWauTrend(
 /**
  * Fetch feature adoption (30 days, count of active days / total features)
  */
+/**
+ * NOTE: True feature adoption (distinct features used / total features) requires
+ * per-feature event queries or the Amplitude Behavioral Cohorts API, which needs
+ * a configured feature event list. As a proxy, we count "active days in 30d /
+ * featuresTotal" — a coarser signal that still captures engagement breadth trends.
+ * Replace with per-feature queries once feature event names are configured.
+ */
 async function fetchFeatureAdoption(
   apiKey: string,
   secretKey: string,
@@ -261,12 +268,8 @@ async function fetchLastLoginDays(
     }
 
     const mostRecentDateStr = xValues[mostRecentIdx];
-    // Parse YYYYMMDD format
-    const year = parseInt(mostRecentDateStr.slice(0, 4), 10);
-    const month = parseInt(mostRecentDateStr.slice(4, 6), 10) - 1;
-    const day = parseInt(mostRecentDateStr.slice(6, 8), 10);
-
-    const mostRecentDate = new Date(year, month, day);
+    // Amplitude xValues are returned as "YYYY-MM-DD"; new Date() handles both ISO formats.
+    const mostRecentDate = new Date(mostRecentDateStr);
     const today = new Date();
     const diffMs = today.getTime() - mostRecentDate.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));

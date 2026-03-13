@@ -21,7 +21,7 @@ npm run build        # tsc + vite build
 
 ## Architecture
 
-n8n Cloud handles all data writes (HubSpot sync, Amplitude MCP fetch, score computation). Azure Functions is a thin read API + mapping CRUD. React frontend displays accounts and manages Amplitude mappings.
+Azure Functions handles all data writes: nightly HubSpot sync, Amplitude signal fetch, and health score computation. No n8n dependency. React frontend displays accounts and manages Amplitude mappings.
 
 ### Backend (`backend/`) - Azure Functions v4, Node.js 20, TypeScript, CommonJS
 
@@ -30,19 +30,25 @@ Entry point `src/index.ts` imports all function modules as side effects.
 **Functions** (`src/functions/`):
 - `AccountsApi.ts` - Read-only: `GET /api/accounts` (list with today's scores), `GET /api/accounts/{id}` (detail with 7-day history). Joins across accounts, churnscores, and amplitudemapping tables.
 - `MappingApi.ts` - `GET /api/mapping`, `POST /api/mapping` (upsert, Zod-validated), `DELETE /api/mapping/{id}`.
-- `SyncTrigger.ts` - `POST /api/sync` - fires n8n webhook, returns `{ status: "triggered" }`.
+- `SyncTrigger.ts` - `POST /api/sync` - calls `runSync()` directly, returns `{ status: "ok", result: SyncResult }`.
+- `SyncRunner.ts` - Timer trigger (2 AM UTC daily) + `runSync()` export. Orchestrates: HubSpot → accounts table, Amplitude → health scores table.
+
+**Clients** (`src/clients/`):
+- `hubspotClient.ts` - HubSpot CRM API: search active companies, resolve owner by ID. Uses fetch + Bearer token.
+- `amplitudeClient.ts` - Amplitude Segmentation API: DAU/WAU trend, activity breadth (proxy for feature adoption), last login days. Uses Basic Auth.
 
 **Services** (`src/services/`):
 - `accountStore.ts` - `AccountStore` wraps Azure Table Storage. `partitionKey = 'accounts'`, `rowKey = hubspotId`.
 - `mappingStore.ts` - `MappingStore` for `amplitudemapping` table. `partitionKey = 'mapping'`, `rowKey = hubspotId`.
 - `scoreStore.ts` - `ScoreStore` for `churnscores` table. `partitionKey = hubspotId`, `rowKey = YYYY-MM-DD`.
+- `healthScoreService.ts` - Pure scoring function: DAU/WAU trend (0–40) + feature adoption (0–35) + last login (0–25).
 
 **Patterns to follow:**
 - All env vars go through `getConfig()` in `config.ts`. `requireEnv()` hard-crashes on missing vars; optional vars have defaults.
 - Every HTTP handler must respond to `OPTIONS` with `CORS_HEADERS` (wildcard origin).
 - Zod validates external inputs in MappingApi. JSON API uses `camelCase`.
 - New functions must be added to `src/index.ts` as an import side effect.
-- Accounts are read-only in the API - all writes come from n8n/HubSpot sync.
+- Account writes come from `SyncRunner.runSync()` (timer or on-demand via `POST /api/sync`).
 
 ### Frontend (`frontend/`) - React 18, Vite, TypeScript, Tailwind CSS, react-router-dom v6
 
@@ -63,9 +69,9 @@ VITE_API_KEY=<function-key-from-local-settings>
 ## Data Model
 
 Three Azure Table Storage tables:
-- **`accounts`** - HubSpot company data, synced nightly by n8n
+- **`accounts`** - HubSpot company data, synced nightly by SyncRunner
 - **`amplitudemapping`** - HubSpot company ID -> Amplitude alias, managed via web UI
-- **`churnscores`** - Daily health scores per account, written by n8n
+- **`churnscores`** - Daily health scores per account, written by SyncRunner
 
 `HubspotAccount` -> joined with latest `ChurnScore` + `AmplitudeMapping` -> returned as `AccountSummary`.
 
@@ -74,7 +80,8 @@ Three Azure Table Storage tables:
 ## Status
 
 - **MVP backend + frontend: complete** (Tasks 1-9, 12-15)
-- **n8n Cloud setup: pending** (Tasks 10-11, manual configuration)
+- **n8n removed: Azure Functions handles all sync** (2026-03-12)
+- **Env vars needed**: `HUBSPOT_API_KEY`, `AMPLITUDE_API_KEY`, `AMPLITUDE_SECRET_KEY` (required); `AMPLITUDE_ACCOUNT_PROPERTY` (default: `account_name`), `AMPLITUDE_FEATURES_TOTAL` (default: `10`)
 - **Deployment: pending**
 
 Full spec: `docs/plans/2026-03-11-cs-copilot-mvp-design.md`

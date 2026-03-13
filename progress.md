@@ -1,6 +1,6 @@
 # CS Copilot - Progress
 
-## Status: MVP Code Complete (Tasks 1-9, 12-15 done) - Awaiting n8n Setup (Tasks 10-11)
+## Status: MVP Code Complete — Azure Functions handles all sync (n8n removed 2026-03-12)
 
 **Spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 **Plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
@@ -9,10 +9,9 @@
 
 ## What's Left
 
-1. **Tasks 10-11: n8n Cloud setup (manual)** - See implementation plan for node-by-node instructions
+1. Add env vars to Azure Functions app settings: `HUBSPOT_API_KEY`, `AMPLITUDE_API_KEY`, `AMPLITUDE_SECRET_KEY`
 2. Deploy backend to Azure Functions
 3. Deploy frontend to Azure Static Web Apps
-4. Update `CLAUDE.md` to reflect new architecture
 
 ---
 
@@ -26,9 +25,13 @@
 | 5 | Add `scoreStore.ts` with TDD | **DONE** | New file, churnscores table reads; 4 tests |
 | 6 | Rewrite `AccountsApi.ts` (read-only) | **DONE** | Read-only GET /api/accounts + GET /api/accounts/{id} with score + mapping joins |
 | 7 | Add `MappingApi.ts` | **DONE** | GET/POST/DELETE /api/mapping |
-| 8 | Add `SyncTrigger.ts` | **DONE** | POST /api/sync triggers n8n webhook |
+| 8 | Add `SyncTrigger.ts` | **DONE** | POST /api/sync calls runSync() directly (n8n removed) |
 | 9 | Update `index.ts`, delete old files | **DONE** | Registered new functions; deleted ImportAccounts.ts |
-| 10-11 | n8n Cloud setup | **MANUAL - PENDING** | User must configure n8n workflows |
+| 10-11 | ~~n8n Cloud setup~~ | **SUPERSEDED** | Replaced by Azure Functions native sync (SyncRunner) |
+| 16 | Add `hubspotClient.ts` | **DONE** | HubSpot CRM API: active companies + owner resolution |
+| 17 | Add `amplitudeClient.ts` | **DONE** | Amplitude Segmentation API: DAU/WAU trend, activity breadth, last login |
+| 18 | Add `healthScoreService.ts` | **DONE** | Pure scoring function + 33 unit tests |
+| 19 | Add `SyncRunner.ts` | **DONE** | Nightly timer (2 AM UTC) + runSync() orchestration + 5 tests |
 | 12 | Frontend: routing, types, API service | **DONE** | react-router-dom installed, types + api.ts rewritten, main.tsx wrapped in BrowserRouter |
 | 13 | Rewrite `Portfolio.tsx` | **DONE** | Scores, sync button, unmapped flag; removed editing + CsvImportModal |
 | 14 | Add `Mapping.tsx` | **DONE** | New page for Amplitude alias management with inline editing |
@@ -39,16 +42,18 @@
 ## Validation Snapshot (2026-03-12)
 
 - Backend TypeScript build: **clean**
-- Backend tests: **15/15 passing** across 3 suites (accountStore, mappingStore, scoreStore)
+- Backend tests: **57/57 passing** across 5 suites (accountStore, mappingStore, scoreStore, healthScoreService, SyncRunner)
 - Frontend TypeScript + Vite build: **clean** (191 kB JS, 12 kB CSS)
 - Unused Phase 0 dependencies removed (117 packages)
-- Unused Phase 0 env vars removed from local.settings.json
+- n8n dependency eliminated
 
 ---
 
 ## Architecture Summary
 
-**n8n Cloud** writes data (HubSpot sync, Amplitude MCP fetch, health score computation) -> **Azure Table Storage** (3 tables: `accounts`, `amplitudemapping`, `churnscores`) -> **Azure Functions** thin read API + mapping CRUD -> **React frontend** (Portfolio + Mapping pages).
+**Azure Functions (SyncRunner)** fetches HubSpot companies + Amplitude signals → computes health scores → writes to **Azure Table Storage** (3 tables: `accounts`, `amplitudemapping`, `churnscores`) → **Azure Functions** read API + mapping CRUD → **React frontend** (Portfolio + Mapping pages).
+
+Sync runs: (a) nightly timer trigger at 2 AM UTC, (b) on-demand via `POST /api/sync` button in the frontend.
 
 **Health Score:** 100% Amplitude for MVP. DAU/WAU trend (0-40 pts) + Feature adoption (0-35 pts) + Last active login (0-25 pts) = 0-100.
 
