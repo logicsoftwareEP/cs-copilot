@@ -93,4 +93,18 @@ export class ScoreStore {
 
     return result;
   }
+
+  async upsertScore(score: ChurnScore): Promise<void> {
+    await this.client.upsertEntity({
+      partitionKey: score.hubspotId,
+      rowKey: score.date,
+      score: score.score,
+      tier: score.tier,
+      dauWauTrend: score.dauWauTrend,
+      featureAdoption: score.featureAdoption,
+      lastLoginDays: score.lastLoginDays,
+      scoreDelta: score.scoreDelta,
+      computedAt: score.computedAt,
+    }, 'Replace');
+  }
 }
