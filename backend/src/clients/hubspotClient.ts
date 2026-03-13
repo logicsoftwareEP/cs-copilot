@@ -80,7 +80,7 @@ export async function searchActiveCompanies(
       filterGroups: [
         {
           filters: [
-            { propertyName: 'active', operator: 'EQ', value: 'Yes' },
+            { propertyName: 'active', operator: 'EQ', value: 'yes' },
           ],
         },
       ],
