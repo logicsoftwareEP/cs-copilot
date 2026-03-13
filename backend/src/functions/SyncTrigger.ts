@@ -1,5 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { getConfig } from '../config';
+import { runSync } from './SyncRunner';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -13,14 +13,21 @@ async function triggerSync(
 ): Promise<HttpResponseInit> {
   if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
 
-  // TODO: Task 7 - call runSync() instead of n8n webhook
-  context.log('POST /api/sync received (runSync not yet implemented)');
-
-  return {
-    status: 200,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: 'triggered' }),
-  };
+  try {
+    const result = await runSync(context);
+    return {
+      status: 200,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'ok', result }),
+    };
+  } catch (err: any) {
+    context.error('Sync failed:', err);
+    return {
+      status: 500,
+      headers: CORS_HEADERS,
+      body: `Sync failed: ${err.message}`,
+    };
+  }
 }
 
 app.http('TriggerSync', {
