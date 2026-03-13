@@ -3,7 +3,11 @@ export interface Config {
   tableAccounts: string;
   tableMapping: string;
   tableScores: string;
-  n8nSyncWebhookUrl: string;
+  hubspotApiKey: string;
+  amplitudeApiKey: string;
+  amplitudeSecretKey: string;
+  amplitudeAccountProperty: string;
+  amplitudeFeaturesTotal: number;
 }
 
 function requireEnv(name: string): string {
@@ -18,6 +22,10 @@ export function getConfig(): Config {
     tableAccounts: process.env.AZURE_STORAGE_TABLE_ACCOUNTS ?? 'accounts',
     tableMapping: process.env.AZURE_STORAGE_TABLE_MAPPING ?? 'amplitudemapping',
     tableScores: process.env.AZURE_STORAGE_TABLE_SCORES ?? 'churnscores',
-    n8nSyncWebhookUrl: requireEnv('N8N_SYNC_WEBHOOK_URL'),
+    hubspotApiKey: requireEnv('HUBSPOT_API_KEY'),
+    amplitudeApiKey: requireEnv('AMPLITUDE_API_KEY'),
+    amplitudeSecretKey: requireEnv('AMPLITUDE_SECRET_KEY'),
+    amplitudeAccountProperty: process.env.AMPLITUDE_ACCOUNT_PROPERTY ?? 'account_name',
+    amplitudeFeaturesTotal: Number(process.env.AMPLITUDE_FEATURES_TOTAL ?? '10'),
   };
 }
