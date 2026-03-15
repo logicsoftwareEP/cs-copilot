@@ -51,6 +51,8 @@ export interface ChurnScore {
   lastLoginDays: number | null;
   scoreDelta: number | null;
   computedAt: string;
+  zendeskPenalty: number | null;
+  zendeskDetails: string | null;
 }
 
 export type HealthTier = 'healthy' | 'watch' | 'at-risk' | 'critical';
