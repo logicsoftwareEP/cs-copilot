@@ -1,4 +1,5 @@
 import { AmplitudeSignals } from '../clients/amplitudeClient';
+import { ZendeskTicketData } from '../clients/zendeskClient';
 import { HealthTier } from '../types';
 
 export interface HealthScoreResult {
@@ -112,5 +113,119 @@ export function computeScore(
     tier,
     licenseUtilization,
     monthlyActiveUsers,
+  };
+}
+
+// ── Zendesk penalty scoring ─────────────────────────────────────────────────
+
+export interface ZendeskPenaltyResult {
+  totalPenalty: number;      // 0 to -20 (capped)
+  volumePenalty: number;     // 0 to -8
+  openPenalty: number;       // 0 to -7
+  severityPenalty: number;   // 0 to -5
+  ticketVolume: number;
+  openCount: number;
+  highPriorityCount: number;
+  urgentCount: number;
+}
+
+/**
+ * Compute a Zendesk support-ticket penalty from ticket data.
+ *
+ * Pure function — no side-effects. Penalty thresholds:
+ *   Volume (last 30d):  0-2 → 0, 3-5 → -3, 6-10 → -5, 11+ → -8
+ *   Open (unresolved):  0 → 0, 1-2 → -2, 3-5 → -4, 6+ → -7
+ *   Severity (30d):     none → 0, 1-2 high → -2, any urgent OR 3+ high → -5
+ *
+ * Total is the sum of sub-penalties, capped at -20.
+ */
+export function computeZendeskPenalty(data: ZendeskTicketData): ZendeskPenaltyResult {
+  // ── Volume penalty ──────────────────────────────────────────────────────
+  let volumePenalty = 0;
+  if (data.ticketVolume >= 11) {
+    volumePenalty = -8;
+  } else if (data.ticketVolume >= 6) {
+    volumePenalty = -5;
+  } else if (data.ticketVolume >= 3) {
+    volumePenalty = -3;
+  }
+
+  // ── Open ticket penalty ─────────────────────────────────────────────────
+  let openPenalty = 0;
+  if (data.openCount >= 6) {
+    openPenalty = -7;
+  } else if (data.openCount >= 3) {
+    openPenalty = -4;
+  } else if (data.openCount >= 1) {
+    openPenalty = -2;
+  }
+
+  // ── Severity penalty ────────────────────────────────────────────────────
+  let severityPenalty = 0;
+  if (data.urgentCount >= 1 || data.highPriorityCount >= 3) {
+    severityPenalty = -5;
+  } else if (data.highPriorityCount >= 1) {
+    severityPenalty = -2;
+  }
+
+  // ── Total (capped at -20) ──────────────────────────────────────────────
+  const rawTotal = volumePenalty + openPenalty + severityPenalty;
+  const totalPenalty = Math.max(rawTotal, -20);
+
+  return {
+    totalPenalty,
+    volumePenalty,
+    openPenalty,
+    severityPenalty,
+    ticketVolume: data.ticketVolume,
+    openCount: data.openCount,
+    highPriorityCount: data.highPriorityCount,
+    urgentCount: data.urgentCount,
+  };
+}
+
+/**
+ * Apply Zendesk penalty to a base health-score result.
+ *
+ * If zendeskData is null (i.e. Zendesk not configured or API error),
+ * the base result is returned unchanged with zendeskPenalty = null.
+ *
+ * Otherwise the penalty is subtracted from the score (clamped to 0)
+ * and the tier is re-derived from the adjusted score.
+ */
+export function applyZendeskPenalty(
+  baseResult: HealthScoreResult,
+  zendeskData: ZendeskTicketData | null
+): HealthScoreResult & { zendeskPenalty: number | null } {
+  if (zendeskData === null) {
+    return { ...baseResult, zendeskPenalty: null };
+  }
+
+  const { totalPenalty } = computeZendeskPenalty(zendeskData);
+
+  // If the base score is null (unmapped account), penalty cannot be applied
+  if (baseResult.score === null) {
+    return { ...baseResult, zendeskPenalty: totalPenalty };
+  }
+
+  const adjustedScore = Math.max(0, baseResult.score + totalPenalty);
+
+  // Re-derive tier from adjusted score
+  let tier: HealthTier | 'unmapped';
+  if (adjustedScore >= 80) {
+    tier = 'healthy';
+  } else if (adjustedScore >= 60) {
+    tier = 'watch';
+  } else if (adjustedScore >= 40) {
+    tier = 'at-risk';
+  } else {
+    tier = 'critical';
+  }
+
+  return {
+    ...baseResult,
+    score: adjustedScore,
+    tier,
+    zendeskPenalty: totalPenalty,
   };
 }
