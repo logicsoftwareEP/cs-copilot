@@ -5,12 +5,14 @@ import { MappingStore } from '../services/mappingStore';
 import { ScoreStore } from '../services/scoreStore';
 import { searchActiveCompanies } from '../clients/hubspotClient';
 import { fetchSignals } from '../clients/amplitudeClient';
-import { computeScore } from '../services/healthScoreService';
+import { fetchZendeskTickets, ZendeskTicketData } from '../clients/zendeskClient';
+import { computeScore, applyZendeskPenalty, computeZendeskPenalty } from '../services/healthScoreService';
 
 export interface SyncResult {
   synced: number;   // accounts upserted to accountStore
   scored: number;   // accounts with a score computed
   failed: number;   // accounts where Amplitude fetch failed
+  zendeskFetched: number; // domains with Zendesk data fetched
   errors: string[]; // error messages
 }
 
@@ -55,6 +57,53 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
       mappingList.map(m => [m.hubspotId, m.amplitudeAlias])
     );
 
+    // ── Zendesk fetch phase ─────────────────────────────────────────────────
+    const zendeskEnabled = !!(config.zendeskSubdomain && config.zendeskEmail && config.zendeskApiToken);
+    const zendeskMap = new Map<string, ZendeskTicketData | null>();
+    let zendeskFetched = 0;
+
+    if (zendeskEnabled) {
+      // Collect unique non-empty domains from stored accounts
+      const domains = new Set<string>();
+      for (const acct of storedAccounts) {
+        if (acct.domain) {
+          domains.add(acct.domain);
+        }
+      }
+
+      const domainArray = Array.from(domains);
+      let isFirstCall = true;
+
+      for (const domain of domainArray) {
+        const data = await fetchZendeskTickets(
+          config.zendeskSubdomain!,
+          config.zendeskEmail!,
+          config.zendeskApiToken!,
+          domain
+        );
+
+        if (isFirstCall && data === null) {
+          log('Zendesk: first call returned null (possible auth failure) — skipping remaining domains');
+          break;
+        }
+        isFirstCall = false;
+
+        zendeskMap.set(domain, data);
+        if (data !== null) {
+          zendeskFetched++;
+        }
+
+        // Rate limiting: 100 req/min → 600ms between calls
+        if (domainArray.indexOf(domain) < domainArray.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 600));
+        }
+      }
+
+      log(`Zendesk: fetched ${zendeskFetched}/${domains.size} domains, ${zendeskFetched} with data`);
+    } else {
+      log('Zendesk: disabled (missing config)');
+    }
+
     // Load yesterday's scores for delta calculation
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -69,9 +118,12 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
 
     for (const company of companies) {
       const amplitudeAlias = mappingMap.get(company.hubspotId);
+      const accountDomain = storedMap.get(company.hubspotId)?.domain ?? '';
+      const zendeskData = accountDomain ? (zendeskMap.get(accountDomain) ?? null) : null;
 
       if (!amplitudeAlias) {
         // No Amplitude mapping — upsert a placeholder score
+        const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
         await scoreStore.upsertScore({
           hubspotId: company.hubspotId,
           date: todayISO,
@@ -83,8 +135,8 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           lastLoginDays: null,
           scoreDelta: null,
           computedAt: new Date().toISOString(),
-          zendeskPenalty: null,
-          zendeskDetails: null,
+          zendeskPenalty: penalty ? penalty.totalPenalty : null,
+          zendeskDetails: penalty ? JSON.stringify(penalty) : null,
         });
         continue;
       }
@@ -99,7 +151,11 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
 
         // Use stored licenses (manually entered) rather than HubSpot-synced data
         const licenses = storedMap.get(company.hubspotId)?.licenses ?? null;
-        const { score, tier, licenseUtilization, monthlyActiveUsers } = computeScore(signals, licenses);
+        const baseResult = computeScore(signals, licenses);
+
+        // Apply Zendesk penalty
+        const adjusted = applyZendeskPenalty(baseResult, zendeskData);
+        const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
 
         // Calculate score delta vs yesterday
         const yesterdayScore = yesterdayScores.get(company.hubspotId);
@@ -107,24 +163,24 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         if (
           yesterdayScore !== undefined &&
           yesterdayScore.score !== null &&
-          score !== null
+          adjusted.score !== null
         ) {
-          scoreDelta = score - yesterdayScore.score;
+          scoreDelta = adjusted.score - yesterdayScore.score;
         }
 
         await scoreStore.upsertScore({
           hubspotId: company.hubspotId,
           date: todayISO,
-          score,
-          tier,
+          score: adjusted.score,
+          tier: adjusted.tier,
           dauWauTrend: signals.dauWauTrend,
-          monthlyActiveUsers,
-          licenseUtilization,
+          monthlyActiveUsers: adjusted.monthlyActiveUsers,
+          licenseUtilization: adjusted.licenseUtilization,
           lastLoginDays: signals.lastLoginDays,
           scoreDelta,
           computedAt: new Date().toISOString(),
-          zendeskPenalty: null,
-          zendeskDetails: null,
+          zendeskPenalty: adjusted.zendeskPenalty,
+          zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
         });
 
         scored++;
@@ -152,10 +208,10 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
       }
     }
 
-    return { synced: companies.length, scored, failed, errors };
+    return { synced: companies.length, scored, failed, zendeskFetched, errors };
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    return { synced: 0, scored: 0, failed: 0, errors: [msg] };
+    return { synced: 0, scored: 0, failed: 0, zendeskFetched: 0, errors: [msg] };
   }
 }
 

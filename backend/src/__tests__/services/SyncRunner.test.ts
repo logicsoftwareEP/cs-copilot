@@ -8,6 +8,7 @@ jest.mock('@azure/functions', () => ({
 
 jest.mock('../../clients/hubspotClient');
 jest.mock('../../clients/amplitudeClient');
+jest.mock('../../clients/zendeskClient');
 jest.mock('../../services/accountStore');
 jest.mock('../../services/mappingStore');
 jest.mock('../../services/scoreStore');
@@ -15,11 +16,13 @@ jest.mock('../../services/scoreStore');
 import { runSync } from '../../functions/SyncRunner';
 import { searchActiveCompanies } from '../../clients/hubspotClient';
 import { fetchSignals } from '../../clients/amplitudeClient';
+import { fetchZendeskTickets } from '../../clients/zendeskClient';
 import { AccountStore } from '../../services/accountStore';
 import { MappingStore } from '../../services/mappingStore';
 import { ScoreStore } from '../../services/scoreStore';
 import { HubspotAccount } from '../../types';
 import { AmplitudeSignals } from '../../clients/amplitudeClient';
+import { ZendeskTicketData } from '../../clients/zendeskClient';
 
 // Set required env vars so getConfig() does not throw
 beforeAll(() => {
@@ -31,6 +34,7 @@ beforeAll(() => {
 
 const mockSearchActiveCompanies = searchActiveCompanies as jest.MockedFunction<typeof searchActiveCompanies>;
 const mockFetchSignals = fetchSignals as jest.MockedFunction<typeof fetchSignals>;
+const mockFetchZendeskTickets = fetchZendeskTickets as jest.MockedFunction<typeof fetchZendeskTickets>;
 
 const MockAccountStore = AccountStore as jest.MockedClass<typeof AccountStore>;
 const MockMappingStore = MappingStore as jest.MockedClass<typeof MappingStore>;
@@ -268,5 +272,125 @@ describe('runSync', () => {
     const scoreCall = upsertScore.mock.calls[0][0];
     expect(scoreCall.score).toBe(80); // uses licenses=100 from store
     expect(scoreCall.licenseUtilization).toBeCloseTo(0.5);
+  });
+
+  // ── Zendesk integration tests ───────────────────────────────────────────
+
+  const ZENDESK_TICKET_DATA: ZendeskTicketData = {
+    ticketVolume: 7,
+    openCount: 3,
+    highPriorityCount: 1,
+    urgentCount: 0,
+  };
+
+  function enableZendeskConfig() {
+    process.env.ZENDESK_SUBDOMAIN = 'test-sub';
+    process.env.ZENDESK_EMAIL = 'agent@test.com';
+    process.env.ZENDESK_API_TOKEN = 'zd-token-123';
+  }
+
+  function disableZendeskConfig() {
+    delete process.env.ZENDESK_SUBDOMAIN;
+    delete process.env.ZENDESK_EMAIL;
+    delete process.env.ZENDESK_API_TOKEN;
+  }
+
+  it('sync with Zendesk enabled applies penalties', async () => {
+    enableZendeskConfig();
+    const companyWithDomain: HubspotAccount = { ...COMPANY_A, domain: 'alpha.com' };
+
+    const { upsertScore } = setupStoreMocks({
+      mappings: [{ hubspotId: 'hs-001', amplitudeAlias: 'alpha' }],
+      storedAccounts: [companyWithDomain],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([companyWithDomain]);
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+    mockFetchZendeskTickets.mockResolvedValue(ZENDESK_TICKET_DATA);
+
+    const result = await runSync();
+
+    expect(result.zendeskFetched).toBe(1);
+    expect(mockFetchZendeskTickets).toHaveBeenCalledWith('test-sub', 'agent@test.com', 'zd-token-123', 'alpha.com');
+
+    const scoreCall = upsertScore.mock.calls[0][0];
+    // Volume 7 → -5, Open 3 → -4, High 1 → -2 = total -11
+    // Base score = 100 (no licenses), adjusted = 100 + (-11) = 89
+    expect(scoreCall.zendeskPenalty).toBe(-11);
+    expect(scoreCall.score).toBe(89);
+    expect(scoreCall.zendeskDetails).toBeTruthy();
+    const details = JSON.parse(scoreCall.zendeskDetails);
+    expect(details.totalPenalty).toBe(-11);
+
+    disableZendeskConfig();
+  });
+
+  it('sync with Zendesk disabled skips penalty phase', async () => {
+    disableZendeskConfig();
+
+    setupStoreMocks({
+      mappings: [{ hubspotId: 'hs-001', amplitudeAlias: 'alpha' }],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+
+    const result = await runSync();
+
+    expect(result.zendeskFetched).toBe(0);
+    expect(mockFetchZendeskTickets).not.toHaveBeenCalled();
+  });
+
+  it('unmapped account with domain still gets zendeskPenalty', async () => {
+    enableZendeskConfig();
+    const companyWithDomain: HubspotAccount = { ...COMPANY_A, domain: 'alpha.com' };
+
+    const { upsertScore } = setupStoreMocks({
+      mappings: [], // no Amplitude mapping
+      storedAccounts: [companyWithDomain],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([companyWithDomain]);
+    mockFetchZendeskTickets.mockResolvedValue(ZENDESK_TICKET_DATA);
+
+    const result = await runSync();
+
+    expect(result.scored).toBe(0);
+    expect(result.zendeskFetched).toBe(1);
+
+    const scoreCall = upsertScore.mock.calls[0][0];
+    expect(scoreCall.score).toBeNull();
+    expect(scoreCall.tier).toBe('unmapped');
+    // Volume 7 → -5, Open 3 → -4, High 1 → -2 = total -11
+    expect(scoreCall.zendeskPenalty).toBe(-11);
+    expect(scoreCall.zendeskDetails).toBeTruthy();
+
+    disableZendeskConfig();
+  });
+
+  it('Zendesk auth failure (401) on first domain skips remaining domains', async () => {
+    enableZendeskConfig();
+    const companyA: HubspotAccount = { ...COMPANY_A, domain: 'alpha.com' };
+    const companyB: HubspotAccount = { ...COMPANY_B, domain: 'beta.com' };
+
+    setupStoreMocks({
+      mappings: [
+        { hubspotId: 'hs-001', amplitudeAlias: 'alpha' },
+        { hubspotId: 'hs-002', amplitudeAlias: 'beta' },
+      ],
+      storedAccounts: [companyA, companyB],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([companyA, companyB]);
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+    // First call returns null (auth failure) — remaining should be skipped
+    mockFetchZendeskTickets.mockResolvedValueOnce(null);
+
+    const result = await runSync();
+
+    expect(mockFetchZendeskTickets).toHaveBeenCalledTimes(1);
+    expect(result.zendeskFetched).toBe(0);
+
+    disableZendeskConfig();
   });
 });
