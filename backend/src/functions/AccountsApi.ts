@@ -138,7 +138,8 @@ async function getAccount(
               dauWauTrend: latestScore.dauWauTrend,
               monthlyActiveUsers: latestScore.monthlyActiveUsers,
               licenseUtilization: latestScore.licenseUtilization,
-              lastLoginDays: latestScore.lastLoginDays,
+              featuresUsed: latestScore.featuresUsed ?? null,
+              featureDetails: latestScore.featureDetails ? JSON.parse(latestScore.featureDetails as string) : null,
               zendeskPenalty: latestScore.zendeskPenalty ?? null,
               zendeskDetails: latestScore.zendeskDetails ? JSON.parse(latestScore.zendeskDetails as string) : null,
             }

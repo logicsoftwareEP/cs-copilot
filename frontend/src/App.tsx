@@ -1,12 +1,12 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Portfolio from './pages/Portfolio';
-import Mapping from './pages/Mapping';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Portfolio />} />
-      <Route path="/mapping" element={<Mapping />} />
+      {/* Legacy mapping route — alias editing is now inline in the portfolio grid */}
+      <Route path="/mapping" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

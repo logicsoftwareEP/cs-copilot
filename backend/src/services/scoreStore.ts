@@ -10,6 +10,8 @@ interface ScoreEntity {
   monthlyActiveUsers: number | null;
   licenseUtilization: number | null;
   lastLoginDays: number | null;
+  featuresUsed: number | null;
+  featureDetails: string | null;
   scoreDelta: number | null;
   computedAt: string;
   zendeskPenalty: number | null;
@@ -26,6 +28,8 @@ function fromEntity(entity: ScoreEntity): ChurnScore {
     monthlyActiveUsers: entity.monthlyActiveUsers ?? null,
     licenseUtilization: entity.licenseUtilization ?? null,
     lastLoginDays: entity.lastLoginDays,
+    featuresUsed: entity.featuresUsed ?? null,
+    featureDetails: entity.featureDetails ?? null,
     scoreDelta: entity.scoreDelta,
     computedAt: entity.computedAt,
     zendeskPenalty: entity.zendeskPenalty ?? null,
@@ -110,6 +114,8 @@ export class ScoreStore {
       monthlyActiveUsers: score.monthlyActiveUsers,
       licenseUtilization: score.licenseUtilization,
       lastLoginDays: score.lastLoginDays,
+      featuresUsed: score.featuresUsed,
+      featureDetails: score.featureDetails,
       scoreDelta: score.scoreDelta,
       computedAt: score.computedAt,
       zendeskPenalty: score.zendeskPenalty,

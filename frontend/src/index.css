@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,33 +6,67 @@
 
 @layer base {
   body {
-    font-family: 'Figtree', sans-serif;
-    color: #26262B;
-    background-color: #F7F7FC;
+    font-family: 'Sora', sans-serif;
+    color: #E4E8EF;
+    background-color: #111318;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Subtle noise grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.018;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   }
 }
 
-/* Custom scrollbar for detail panel */
-.bv-scrollbar::-webkit-scrollbar { width: 4px; }
-.bv-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.bv-scrollbar::-webkit-scrollbar-thumb { background: #DEDEE5; border-radius: 4px; }
-.bv-scrollbar::-webkit-scrollbar-thumb:hover { background: #C2C2CD; }
+/* Scrollbar — dark, thin */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #363B4A; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #5A6170; }
 
-/* Detail panel slide-in */
-.panel-enter {
-  animation: slideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to   { transform: translateX(0);   opacity: 1; }
-}
+/* Panel scrollbar */
+.obs-scrollbar::-webkit-scrollbar { width: 4px; }
+.obs-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.obs-scrollbar::-webkit-scrollbar-thumb { background: #2E3340; border-radius: 4px; }
+.obs-scrollbar::-webkit-scrollbar-thumb:hover { background: #363B4A; }
 
-/* Select arrow reset */
+/* Select arrow override for dark theme */
 select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8A99' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A6170' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.6rem center;
   padding-right: 2rem;
   appearance: none;
+}
+
+/* Staggered fade-up for metric cards */
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 180ms; }
+
+/* Tier glow effect on hover */
+.tier-glow-healthy:hover { box-shadow: 0 0 16px -4px rgba(52, 211, 153, 0.3); }
+.tier-glow-watch:hover   { box-shadow: 0 0 16px -4px rgba(251, 191, 36, 0.3); }
+.tier-glow-risk:hover    { box-shadow: 0 0 16px -4px rgba(251, 146, 60, 0.3); }
+.tier-glow-critical:hover { box-shadow: 0 0 16px -4px rgba(248, 113, 113, 0.3); }
+
+/* Row hover highlight */
+.row-hover {
+  transition: background-color 0.15s ease;
+}
+.row-hover:hover {
+  background-color: #1A1D25;
+}
+
+/* Score number glow */
+.score-glow {
+  text-shadow: 0 0 20px rgba(124, 106, 255, 0.3);
 }

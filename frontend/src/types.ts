@@ -33,7 +33,8 @@ export interface ScoreBreakdown {
   dauWauTrend: number | null;
   monthlyActiveUsers: number | null;
   licenseUtilization: number | null;
-  lastLoginDays: number | null;
+  featuresUsed: number | null;
+  featureDetails: Record<string, boolean> | null;
   zendeskPenalty: number | null;
   zendeskDetails: ZendeskDetails | null;
 }
