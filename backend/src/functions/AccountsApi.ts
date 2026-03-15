@@ -139,6 +139,8 @@ async function getAccount(
               monthlyActiveUsers: latestScore.monthlyActiveUsers,
               licenseUtilization: latestScore.licenseUtilization,
               lastLoginDays: latestScore.lastLoginDays,
+              zendeskPenalty: latestScore.zendeskPenalty ?? null,
+              zendeskDetails: latestScore.zendeskDetails ? JSON.parse(latestScore.zendeskDetails as string) : null,
             }
           : null,
         scoreHistory: history,

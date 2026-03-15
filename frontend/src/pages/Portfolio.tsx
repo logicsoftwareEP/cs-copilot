@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses } from '../services/api';
-import { AccountSummary, AccountDetail, HealthTier, ChurnScore } from '../types';
+import { AccountSummary, AccountDetail, HealthTier, ChurnScore, ZendeskDetails } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,6 +68,13 @@ function loginInfo(days: number | null) {
   if (days < 14)  return { pts: 16, label: 'Last 2 weeks', detail: `Last active ${days}d ago`, hint: 'Recent but not daily — worth a check-in.' };
   if (days <= 30) return { pts: 8,  label: 'This month',   detail: `Last active ${days}d ago`, hint: 'Infrequent usage. Consider a proactive outreach.' };
                   return { pts: 0,  label: '30+ days ago', detail: `Last active ${days}d ago`, hint: 'No activity in over a month. At risk of churn.' };
+}
+
+function zendeskPenaltyInfo(penalty: number | null): { pts: string; label: string; detail: string; hint: string; colour: string } {
+  if (penalty === null) return { pts: 'N/A', label: 'Support Load', detail: 'No Zendesk data', hint: 'Domain not configured or Zendesk not enabled', colour: 'gray' };
+  if (penalty === 0) return { pts: '0', label: 'Support Load', detail: 'No issues', hint: 'No significant support burden detected', colour: 'green' };
+  if (penalty >= -9) return { pts: String(penalty), label: 'Support Load', detail: 'Minor', hint: 'Some support activity detected', colour: 'amber' };
+  return { pts: String(penalty), label: 'Support Load', detail: 'High', hint: 'Significant support burden', colour: 'red' };
 }
 
 // ─── Utility helpers ──────────────────────────────────────────────────────────
@@ -242,6 +249,8 @@ function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: (
   const dau     = dauWauInfo(bd?.dauWauTrend ?? null);
   const license = licenseInfo(bd?.monthlyActiveUsers ?? null, summary.licenses);
   const login   = loginInfo(bd?.lastLoginDays ?? null);
+  const zendesk = zendeskPenaltyInfo(bd?.zendeskPenalty ?? null);
+  const zd: ZendeskDetails | null = bd?.zendeskDetails ?? null;
   const hasLicenses = summary.licenses !== null;
   const renewal = renewalInfo(summary.renewalDate);
 
@@ -378,6 +387,33 @@ function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: (
                       )}
                     </div>
                   ))}
+
+                  {/* Support Load (Zendesk penalty) */}
+                  <div>
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-[#26262B]">Support Load</p>
+                        <p className="text-[10px] text-[#A1A1B2] mt-0.5">Zendesk ticket penalty</p>
+                      </div>
+                      <p className={`text-xs font-bold flex-shrink-0 ml-3 ${
+                        zendesk.colour === 'green' ? 'text-[#1F845A]' :
+                        zendesk.colour === 'amber' ? 'text-[#946F00]' :
+                        zendesk.colour === 'red'   ? 'text-[#AE2A19]' :
+                                                     'text-[#A1A1B2]'
+                      }`}>
+                        {zendesk.pts}
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-[#4A4A54] mt-1.5 leading-relaxed">
+                      <span className="font-medium">{zendesk.detail}</span>
+                      {' — '}{zendesk.hint}
+                    </p>
+                    {zd && bd?.zendeskPenalty !== null && bd?.zendeskPenalty !== 0 && (
+                      <p className="text-[10px] text-[#A1A1B2] mt-0.5 leading-relaxed">
+                        Volume: {zd.ticketVolume} tickets, Open: {zd.openCount}, High: {zd.highPriorityCount}, Urgent: {zd.urgentCount}
+                      </p>
+                    )}
+                  </div>
 
                   {/* Scoring key */}
                   <div className="rounded-lg bg-[#F7F7FC] border border-[#EDEDF2] px-3.5 py-3 space-y-1.5">

@@ -18,13 +18,24 @@ export interface AccountSummary extends HubspotAccount {
   amplitudeAlias: string | null;
 }
 
+export interface ZendeskDetails {
+  totalPenalty: number;
+  volumePenalty: number;
+  openPenalty: number;
+  severityPenalty: number;
+  ticketVolume: number;
+  openCount: number;
+  highPriorityCount: number;
+  urgentCount: number;
+}
+
 export interface ScoreBreakdown {
   dauWauTrend: number | null;
   monthlyActiveUsers: number | null;
   licenseUtilization: number | null;
   lastLoginDays: number | null;
   zendeskPenalty: number | null;
-  zendeskDetails: string | null;
+  zendeskDetails: ZendeskDetails | null;
 }
 
 export interface AccountDetail extends AccountSummary {
