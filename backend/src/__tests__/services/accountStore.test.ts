@@ -30,6 +30,7 @@ const SAMPLE: HubspotAccount = {
   hubspotUrl: 'https://app.hubspot.com/contacts/123',
   syncedAt: '2026-03-11T02:00:00.000Z',
   licenses: null,
+  domain: '',
 };
 
 describe('AccountStore', () => {

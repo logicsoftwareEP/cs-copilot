@@ -10,6 +10,7 @@ interface CompanySearchResponse {
       arr__annual_recurring_revenue_?: string;
       renewal_date?: string;
       hs_object_url?: string;
+      domain?: string;
     };
   }>;
   paging?: {
@@ -80,6 +81,7 @@ export async function searchActiveCompanies(
         'arr__annual_recurring_revenue_',
         'renewal_date',
         'hs_object_url',
+        'domain',
       ],
       limit: 100,
       ...(after && { after }),
@@ -131,6 +133,7 @@ export async function searchActiveCompanies(
         hubspotUrl:  result.properties.hs_object_url ?? '',
         syncedAt:    new Date().toISOString(),
         licenses:    null, // manually entered in the UI; never synced from HubSpot
+        domain:      result.properties.domain ?? '',
       });
     }
 

@@ -10,6 +10,7 @@ export interface HubspotAccount {
   hubspotUrl: string;
   syncedAt: string;      // ISO timestamp of last sync
   licenses: number | null; // total paid licences; null = not yet entered
+  domain: string;
 }
 
 // Mapping between a HubSpot company and its Amplitude account alias.
@@ -34,6 +35,8 @@ export interface ChurnScore {
   lastLoginDays: number | null;    // integer days since last session start
   scoreDelta: number | null;       // vs previous day
   computedAt: string;
+  zendeskPenalty: number | null;
+  zendeskDetails: string | null;
 }
 
 // Account as returned by GET /api/accounts — account row joined with latest score.

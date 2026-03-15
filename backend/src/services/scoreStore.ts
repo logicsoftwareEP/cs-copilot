@@ -12,6 +12,8 @@ interface ScoreEntity {
   lastLoginDays: number | null;
   scoreDelta: number | null;
   computedAt: string;
+  zendeskPenalty: number | null;
+  zendeskDetails: string | null;
 }
 
 function fromEntity(entity: ScoreEntity): ChurnScore {
@@ -26,6 +28,8 @@ function fromEntity(entity: ScoreEntity): ChurnScore {
     lastLoginDays: entity.lastLoginDays,
     scoreDelta: entity.scoreDelta,
     computedAt: entity.computedAt,
+    zendeskPenalty: entity.zendeskPenalty ?? null,
+    zendeskDetails: entity.zendeskDetails ?? null,
   };
 }
 
@@ -108,6 +112,8 @@ export class ScoreStore {
       lastLoginDays: score.lastLoginDays,
       scoreDelta: score.scoreDelta,
       computedAt: score.computedAt,
+      zendeskPenalty: score.zendeskPenalty,
+      zendeskDetails: score.zendeskDetails,
     }, 'Replace');
   }
 }

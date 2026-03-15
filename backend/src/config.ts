@@ -7,6 +7,9 @@ export interface Config {
   amplitudeApiKey: string;
   amplitudeSecretKey: string;
   amplitudeAccountProperty: string;
+  zendeskSubdomain: string | null;
+  zendeskEmail: string | null;
+  zendeskApiToken: string | null;
 }
 
 function requireEnv(name: string): string {
@@ -25,5 +28,8 @@ export function getConfig(): Config {
     amplitudeApiKey: requireEnv('AMPLITUDE_API_KEY'),
     amplitudeSecretKey: requireEnv('AMPLITUDE_SECRET_KEY'),
     amplitudeAccountProperty: process.env.AMPLITUDE_ACCOUNT_PROPERTY ?? 'account_name',
+    zendeskSubdomain: process.env.ZENDESK_SUBDOMAIN ?? null,
+    zendeskEmail: process.env.ZENDESK_EMAIL ?? null,
+    zendeskApiToken: process.env.ZENDESK_API_TOKEN ?? null,
   };
 }

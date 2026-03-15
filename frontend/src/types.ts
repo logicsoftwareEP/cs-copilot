@@ -8,6 +8,7 @@ export interface HubspotAccount {
   hubspotUrl: string;
   syncedAt: string;
   licenses: number | null;
+  domain: string;
 }
 
 export interface AccountSummary extends HubspotAccount {
@@ -22,6 +23,8 @@ export interface ScoreBreakdown {
   monthlyActiveUsers: number | null;
   licenseUtilization: number | null;
   lastLoginDays: number | null;
+  zendeskPenalty: number | null;
+  zendeskDetails: string | null;
 }
 
 export interface AccountDetail extends AccountSummary {

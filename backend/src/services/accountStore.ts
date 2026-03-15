@@ -12,15 +12,18 @@ interface AccountEntity {
   hubspotUrl: string;
   syncedAt: string;
   licenses?: number | null;
+  domain?: string;
 }
 
 /**
  * Map a HubspotAccount to a Table Storage entity for sync writes.
  * NOTE: `licenses` is intentionally excluded so that Merge mode
  * preserves any manually-entered value already in the table.
+ * `domain` is only written when non-empty to avoid overwriting a
+ * manually-corrected value with a blank string.
  */
 function toEntity(account: HubspotAccount): Omit<AccountEntity, 'licenses'> {
-  return {
+  const entity: Omit<AccountEntity, 'licenses'> = {
     partitionKey: 'accounts',
     rowKey: account.hubspotId,
     accountName: account.accountName,
@@ -31,6 +34,8 @@ function toEntity(account: HubspotAccount): Omit<AccountEntity, 'licenses'> {
     hubspotUrl: account.hubspotUrl,
     syncedAt: account.syncedAt,
   };
+  if (account.domain) entity.domain = account.domain;
+  return entity;
 }
 
 function fromEntity(entity: AccountEntity): HubspotAccount {
@@ -44,6 +49,7 @@ function fromEntity(entity: AccountEntity): HubspotAccount {
     hubspotUrl: entity.hubspotUrl,
     syncedAt: entity.syncedAt,
     licenses: entity.licenses ?? null,
+    domain: entity.domain ?? '',
   };
 }
 

@@ -83,6 +83,8 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           lastLoginDays: null,
           scoreDelta: null,
           computedAt: new Date().toISOString(),
+          zendeskPenalty: null,
+          zendeskDetails: null,
         });
         continue;
       }
@@ -121,6 +123,8 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           lastLoginDays: signals.lastLoginDays,
           scoreDelta,
           computedAt: new Date().toISOString(),
+          zendeskPenalty: null,
+          zendeskDetails: null,
         });
 
         scored++;
@@ -142,6 +146,8 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           lastLoginDays: null,
           scoreDelta: null,
           computedAt: new Date().toISOString(),
+          zendeskPenalty: null,
+          zendeskDetails: null,
         });
       }
     }

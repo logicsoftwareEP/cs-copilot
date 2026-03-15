@@ -47,6 +47,7 @@ const COMPANY_A: HubspotAccount = {
   hubspotUrl: 'https://app.hubspot.com/contacts/1',
   syncedAt: '2026-03-12T02:00:00.000Z',
   licenses: null,
+  domain: '',
 };
 
 const COMPANY_B: HubspotAccount = {
@@ -59,6 +60,7 @@ const COMPANY_B: HubspotAccount = {
   hubspotUrl: 'https://app.hubspot.com/contacts/2',
   syncedAt: '2026-03-12T02:00:00.000Z',
   licenses: null,
+  domain: '',
 };
 
 // GOOD_SIGNALS: dauWauTrend ≥0.1 (40pts) + monthlyActiveUsers (unused, licenses null) + lastLoginDays <7 (25pts)
