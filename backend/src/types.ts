@@ -29,10 +29,12 @@ export interface ChurnScore {
   date: string;                    // YYYY-MM-DD
   score: number | null;
   tier: HealthTier | 'unmapped';
-  dauWauTrend: number | null;      // fractional change e.g. -0.15 = -15%
+  dauWauTrend: number | null;      // MAU trend: (current30dMAU - prior30dMAU) / prior30dMAU
   monthlyActiveUsers: number | null; // unique active users in the last 30 days (MAU)
   licenseUtilization: number | null; // MAU / licenses, 0–1; null when licenses not set
   lastLoginDays: number | null;    // integer days since last session start
+  featuresUsed: number | null;     // count of feature categories used in last 30 days
+  featureDetails: string | null;   // JSON string of Record<string, boolean>
   scoreDelta: number | null;       // vs previous day
   computedAt: string;
   zendeskPenalty: number | null;

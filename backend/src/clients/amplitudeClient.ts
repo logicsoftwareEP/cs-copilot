@@ -39,83 +39,25 @@ function buildBasicAuth(apiKey: string, secretKey: string): string {
 }
 
 /**
- * Fetch DAU/WAU trend (28 days, comparing first 14 days to last 14 days)
+ * Fetch MAU trend: compares current 30-day unique users vs prior 30-day unique users.
+ * Weekend-immune — uses 30-day aggregates, not daily counts.
+ * Returns { trend, currentMAU } so fetchSignals avoids a duplicate MAU call.
  */
-async function fetchDauWauTrend(
+async function fetchMauTrend(
   apiKey: string,
   secretKey: string,
   accountAlias: string,
   accountProperty: string
-): Promise<number | null> {
-  try {
-    const startDate = toAmplitudeDate(daysAgo(28));
-    const endDate = toAmplitudeDate(daysAgo(1));
+): Promise<{ trend: number | null; currentMAU: number | null }> {
+  const [currentMAU, priorMAU] = await Promise.all([
+    fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty),         // days 1–30
+    fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty, 60, 31), // days 31–60
+  ]);
 
-    const filters = JSON.stringify([
-      {
-        subprop_type: 'user',
-        subprop_key: accountProperty,
-        subprop_op: 'is',
-        subprop_value: [accountAlias],
-      },
-    ]);
-
-    const params = new URLSearchParams({
-      e: JSON.stringify({ event_type: '_active' }),
-      m: 'totals',
-      i: '1',
-      start: startDate,
-      end: endDate,
-      filters,
-    });
-
-    const response = await fetch(
-      `https://amplitude.com/api/2/events/segmentation?${params}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: buildBasicAuth(apiKey, secretKey),
-        },
-      }
-    );
-
-    if (!response.ok) {
-      console.warn(
-        `Amplitude DAU/WAU query failed: ${response.status} ${response.statusText}`
-      );
-      return null;
-    }
-
-    const data = (await response.json()) as SegmentationResponse;
-
-    if (!data.data?.series?.[0] || data.data.series[0].length === 0) {
-      return null;
-    }
-
-    const dailyCounts = data.data.series[0];
-
-    // Split into two 14-day halves
-    const first14 = dailyCounts.slice(0, 14);
-    const last14 = dailyCounts.slice(-14);
-
-    const first14avg =
-      first14.length > 0
-        ? first14.reduce((a, b) => a + b, 0) / first14.length
-        : 0;
-    const last14avg =
-      last14.length > 0
-        ? last14.reduce((a, b) => a + b, 0) / last14.length
-        : 0;
-
-    if (first14avg === 0) {
-      return null;
-    }
-
-    return (last14avg - first14avg) / first14avg;
-  } catch (error) {
-    console.warn('Error fetching DAU/WAU trend:', error);
-    return null;
+  if (currentMAU === null || priorMAU === null || priorMAU === 0) {
+    return { trend: null, currentMAU };
   }
+  return { trend: (currentMAU - priorMAU) / priorMAU, currentMAU };
 }
 
 /**
@@ -127,11 +69,13 @@ async function fetchMonthlyActiveUsers(
   apiKey: string,
   secretKey: string,
   accountAlias: string,
-  accountProperty: string
+  accountProperty: string,
+  startDaysAgo = 30,
+  endDaysAgo = 1
 ): Promise<number | null> {
   try {
-    const startDate = toAmplitudeDate(daysAgo(30));
-    const endDate = toAmplitudeDate(daysAgo(1));
+    const startDate = toAmplitudeDate(daysAgo(startDaysAgo));
+    const endDate = toAmplitudeDate(daysAgo(endDaysAgo));
 
     const filters = JSON.stringify([
       {
@@ -276,15 +220,14 @@ export async function fetchSignals(
   accountAlias: string,
   accountProperty: string
 ): Promise<AmplitudeSignals> {
-  const [dauWauTrend, monthlyActiveUsers, lastLoginDays] = await Promise.all([
-    fetchDauWauTrend(apiKey, secretKey, accountAlias, accountProperty),
-    fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty),
+  const [mauResult, lastLoginDays] = await Promise.all([
+    fetchMauTrend(apiKey, secretKey, accountAlias, accountProperty),
     fetchLastLoginDays(apiKey, secretKey, accountAlias, accountProperty),
   ]);
 
   return {
-    dauWauTrend,
-    monthlyActiveUsers,
+    dauWauTrend: mauResult.trend,
+    monthlyActiveUsers: mauResult.currentMAU,
     lastLoginDays,
   };
 }
