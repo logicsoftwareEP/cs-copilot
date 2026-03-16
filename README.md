@@ -16,15 +16,14 @@ Azure Functions (backend — all reads + writes)
 
   GET /api/accounts        → List accounts + today's score
   GET /api/accounts/:id    → Single account + 7-day history + score breakdown
-  PATCH /api/accounts/:id  → Update licence count
+  PATCH /api/accounts/:id  → Update licence count / ARR
   GET /api/mapping         → List all mappings
   POST /api/mapping        → Create/update mapping
   DELETE /api/mapping/:id  → Remove mapping
   POST /api/sync           → Trigger on-demand sync
 
 React Frontend (Azure Static Web Apps)
-  /           → Portfolio page (account table with health scores, inline licence editing)
-  /mapping    → Amplitude alias mapping page
+  /           → Portfolio page (dark/light theme, inline editing for alias/licences/ARR, Top 10 review)
 ```
 
 ### Data Sources
@@ -42,7 +41,7 @@ Three Amplitude-derived components, normalised to 0–100, then adjusted by Zend
 
 | Signal | Weight | Description |
 |--------|--------|-------------|
-| DAU/WAU trend (28d) | 0–40 pts | Compares first vs last 14 days of daily active users |
+| MAU trend (30d) | 0–40 pts | Compares current vs prior 30-day unique users (weekend-immune) |
 | Licence utilisation | 0–35 pts | MAU ÷ paid seats (manually entered). Omitted when licences not set |
 | Feature breadth (30d) | 0–25 pts | Fraction of 12 tracked Birdview feature categories with any activity |
 
@@ -83,7 +82,7 @@ Three tables:
 cd backend
 npm run build        # tsc → dist/
 npm start            # func start (local dev)
-npm test             # jest (98 tests across 7 suites)
+npm test             # jest (96 tests across 7 suites)
 
 # Frontend
 cd frontend

@@ -1,6 +1,6 @@
 # CS Copilot - Progress
 
-## Status: Live — Zendesk ticket penalty added (2026-03-15)
+## Status: Live — Dark theme UI + MAU trend + Zendesk penalty + Top 10 review (2026-03-15)
 
 **Spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 **Plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
@@ -9,17 +9,13 @@
 
 ## What's Left
 
-Zendesk penalty feature implemented, pending deployment:
+All features deployed. Remaining setup:
 
-1. Set Azure app settings: `ZENDESK_SUBDOMAIN=helpeasyprojects`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`
-2. Deploy backend + frontend to Azure
-3. Trigger sync, verify penalty appears in score breakdown
-
-Other improvements:
-
-1. Add more Amplitude alias mappings (currently 6 of 267 accounts mapped)
-2. Set licence counts for mapped accounts to enable utilisation scoring
-3. See `TODOS.md` for deferred items (sentiment analysis, Slack alerts, domain editing)
+1. Set Zendesk env vars: `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN` (subdomain already set)
+2. Re-import ARR values from CSV (lost during stash restore — guard now in place)
+3. Add more Amplitude alias mappings (currently 6 of 267 accounts mapped)
+4. Set licence counts for mapped accounts to enable utilisation scoring
+5. See `TODOS.md` for deferred items (sentiment analysis, Slack alerts, domain editing)
 
 ---
 
@@ -50,8 +46,19 @@ Other improvements:
 ## Validation Snapshot (2026-03-15)
 
 - Backend TypeScript build: **clean**
-- Backend tests: **98/98 passing** across 7 suites
-- Frontend TypeScript + Vite build: **clean** (217 kB JS, 19 kB CSS)
+- Backend tests: **96/96 passing** across 7 suites
+- Frontend TypeScript + Vite build: **clean** (216 kB JS, 22 kB CSS)
+- Backend + frontend deployed to Azure
+
+### 2026-03-15 — Dark theme UI + scoring improvements + Zendesk penalty
+- **Dark theme frontend** restored with custom `obs-*` Tailwind palette, dark/light theme toggle (localStorage persisted)
+- **Inline editing** for Amplitude alias, licences, and ARR directly in the portfolio grid (no separate mapping page)
+- **Top 10 Needs Review** section at page top showing critical/at-risk accounts sorted by ARR
+- **MAU trend** replaces daily DAU/WAU: compares current 30d unique users vs prior 30d unique users — weekend-immune, fewer API calls
+- **Feature breadth** restored as 3rd scoring component (12 Birdview categories, 0-25 pts)
+- **Amplitude filter fix** (3rd occurrence): account filter moved inside event object — top-level `filters` param silently returns global totals
+- **ARR write guard** restored: `toEntity()` skips ARR when 0 to preserve CSV/manual values
+- **Config fix**: `amplitudeAccountProperty` default corrected from `account_name` to `gp:alias`
 
 ### 2026-03-15 — Zendesk ticket penalty
 - **Zendesk penalty** deducts 0 to -20 points from health score based on support load
