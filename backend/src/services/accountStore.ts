@@ -23,19 +23,21 @@ interface AccountEntity {
  * manually-corrected value with a blank string.
  */
 function toEntity(account: HubspotAccount): Omit<AccountEntity, 'licenses'> {
-  const entity: Omit<AccountEntity, 'licenses'> = {
+  const entity: Record<string, unknown> = {
     partitionKey: 'accounts',
     rowKey: account.hubspotId,
     accountName: account.accountName,
     csmName: account.csmName,
     csmEmail: account.csmEmail,
-    arr: account.arr,
     renewalDate: account.renewalDate,
     hubspotUrl: account.hubspotUrl,
     syncedAt: account.syncedAt,
   };
+  // Only write ARR when HubSpot has a value; skip 0 to preserve CSV/manual entries
+  if (account.arr > 0) entity.arr = account.arr;
+  // Only write domain when non-empty to avoid overwriting manual corrections
   if (account.domain) entity.domain = account.domain;
-  return entity;
+  return entity as Omit<AccountEntity, 'licenses'>;
 }
 
 function fromEntity(entity: AccountEntity): HubspotAccount {
