@@ -57,3 +57,15 @@ export async function updateAccountLicenses(hubspotId: string, licenses: number 
     throw new Error(text || `Update failed: ${res.status}`);
   }
 }
+
+export async function updateAccountArr(hubspotId: string, arr: number): Promise<void> {
+  const res = await fetch(withCode(`${BASE_URL}/accounts/${encodeURIComponent(hubspotId)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arr }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Update failed: ${res.status}`);
+  }
+}

@@ -97,12 +97,23 @@ export class AccountStore {
   }
 
   /**
-   * Update the license count for a single account.
+   * Update the licence count for a single account.
    * Uses Merge mode so only `licenses` is written; all other fields are preserved.
    */
   async updateLicenses(hubspotId: string, licenses: number | null): Promise<void> {
     await this.client.upsertEntity(
       { partitionKey: 'accounts', rowKey: hubspotId, licenses },
+      'Merge'
+    );
+  }
+
+  /**
+   * Update the ARR for a single account.
+   * Uses Merge mode so only `arr` is written; all other fields are preserved.
+   */
+  async updateArr(hubspotId: string, arr: number): Promise<void> {
+    await this.client.upsertEntity(
+      { partitionKey: 'accounts', rowKey: hubspotId, arr },
       'Merge'
     );
   }

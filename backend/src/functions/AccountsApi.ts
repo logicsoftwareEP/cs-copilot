@@ -85,23 +85,31 @@ async function getAccount(
 
   if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
 
-  // ── PATCH: update license count ────────────────────────────────────────────
+  // ── PATCH: update licence count and/or ARR ────────────────────────────────
   if (req.method === 'PATCH') {
     try {
-      const body = await req.json() as { licenses?: number | null };
-      const licenses = body.licenses !== undefined ? body.licenses : null;
-
-      if (licenses !== null && (typeof licenses !== 'number' || licenses < 0)) {
-        return { status: 400, headers: CORS_HEADERS, body: 'licenses must be a non-negative number or null.' };
-      }
-
+      const body = await req.json() as { licenses?: number | null; arr?: number };
       const { accounts } = makeStores();
       await accounts.ensureTable();
-      await accounts.updateLicenses(hubspotId, licenses);
+
+      if (body.licenses !== undefined) {
+        const licenses = body.licenses;
+        if (licenses !== null && (typeof licenses !== 'number' || licenses < 0)) {
+          return { status: 400, headers: CORS_HEADERS, body: 'licenses must be a non-negative number or null.' };
+        }
+        await accounts.updateLicenses(hubspotId, licenses);
+      }
+
+      if (body.arr !== undefined) {
+        const arr = typeof body.arr === 'number' ? body.arr : Number(body.arr);
+        if (!isNaN(arr) && arr >= 0) {
+          await accounts.updateArr(hubspotId, arr);
+        }
+      }
 
       return { status: 204, headers: CORS_HEADERS };
     } catch (err: any) {
-      context.error('updateLicenses failed:', err);
+      context.error('PATCH account failed:', err);
       return { status: 500, headers: CORS_HEADERS, body: `Internal error: ${err.message}` };
     }
   }

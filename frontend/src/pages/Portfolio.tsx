@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses, upsertMapping, deleteMapping } from '../services/api';
+import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses, updateAccountArr, upsertMapping, deleteMapping } from '../services/api';
 import { AccountSummary, AccountDetail, HealthTier, ChurnScore } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -538,6 +538,8 @@ export default function Portfolio() {
   const [licensesInput, setLicensesInput]     = useState('');
   const [editingAlias, setEditingAlias]       = useState<string | null>(null);
   const [aliasInput, setAliasInput]           = useState('');
+  const [editingArr, setEditingArr]           = useState<string | null>(null);
+  const [arrInput, setArrInput]               = useState('');
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
@@ -586,6 +588,17 @@ export default function Portfolio() {
       console.warn('Failed to save licenses:', err);
     }
     setEditingLicenses(null);
+  }
+
+  async function saveArr(hubspotId: string) {
+    const raw = arrInput.trim();
+    const value = raw === '' ? 0 : Number(raw);
+    if (isNaN(value) || value < 0) { setEditingArr(null); return; }
+    try {
+      await updateAccountArr(hubspotId, value);
+      setAccounts(prev => prev.map(a => a.hubspotId === hubspotId ? { ...a, arr: value } : a));
+    } catch (err) { console.warn('Failed to save ARR:', err); }
+    setEditingArr(null);
   }
 
   async function saveAlias(account: AccountSummary) {
@@ -731,6 +744,49 @@ export default function Portfolio() {
             />
           </div>
         )}
+
+        {/* ── Top 10 Needs Review ── */}
+        {!loading && !error && accounts.length > 0 && (() => {
+          const needsReview = accounts
+            .filter(a => a.tier === 'critical' || a.tier === 'at-risk')
+            .sort((a, b) => (b.arr ?? 0) - (a.arr ?? 0))
+            .slice(0, 10);
+
+          if (needsReview.length === 0) return null;
+
+          return (
+            <div className="mb-6">
+              <p className="text-[14px] font-semibold uppercase tracking-[0.12em] text-obs-ghost mb-3">
+                Needs Review
+                <span className="text-obs-dim font-normal ml-2">Top {needsReview.length} at-risk accounts by ARR</span>
+              </p>
+              <div className="grid grid-cols-5 gap-3">
+                {needsReview.map(a => {
+                  const cfg = TIER_CFG[a.tier ?? 'unmapped'];
+                  return (
+                    <div
+                      key={a.hubspotId}
+                      onClick={() => setSelected(a)}
+                      className="bg-obs-raised border border-obs-edge rounded-xl px-4 py-3 cursor-pointer hover:border-obs-rule transition-colors group"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <TierBadge tier={a.tier ?? 'unmapped'} />
+                        <span className="text-[16px] font-bold font-mono" style={{ color: cfg.color }}>
+                          {a.score ?? '—'}
+                        </span>
+                      </div>
+                      <p className="text-[14px] font-semibold text-obs-bright truncate">{a.accountName}</p>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className="text-[14px] text-obs-dim truncate">{a.csmName || '—'}</span>
+                        <span className="text-[14px] font-mono text-obs-ghost">{formatArr(a.arr)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Toolbar ── */}
         {!loading && !error && accounts.length > 0 && (
@@ -968,8 +1024,33 @@ export default function Portfolio() {
                             )}
                           </td>
 
-                          {/* ARR */}
-                          <td className="px-4 py-3 text-obs-text font-mono text-[14px]">{formatArr(account.arr)}</td>
+                          {/* ARR (inline editable) */}
+                          <td
+                            className="px-4 py-3 text-[14px] font-mono text-obs-bright text-right"
+                            onClick={e => {
+                              e.stopPropagation();
+                              setEditingArr(account.hubspotId);
+                              setArrInput(String(account.arr || ''));
+                            }}
+                          >
+                            {editingArr === account.hubspotId ? (
+                              <input
+                                autoFocus
+                                className="w-20 bg-obs-elevated border border-obs-accent rounded px-2 py-0.5 text-[14px] font-mono text-obs-bright text-right outline-none"
+                                value={arrInput}
+                                onChange={e => setArrInput(e.target.value)}
+                                onBlur={() => saveArr(account.hubspotId)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveArr(account.hubspotId); if (e.key === 'Escape') setEditingArr(null); }}
+                              />
+                            ) : (
+                              <span
+                                className="cursor-pointer hover:text-obs-accent transition-colors"
+                                title="Click to edit ARR"
+                              >
+                                {formatArr(account.arr)}
+                              </span>
+                            )}
+                          </td>
 
                           {/* Renewal */}
                           <td className="px-4 py-3">
