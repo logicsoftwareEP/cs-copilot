@@ -1,7 +1,14 @@
+import { FeatureEvent } from '../config';
+
+export interface FeatureBreadth {
+  used: string[];
+  total: number;
+}
+
 export interface AmplitudeSignals {
   dauWauTrend: number | null;       // fractional change, e.g. -0.15 = -15%
   monthlyActiveUsers: number | null; // unique active users in the last 30 days
-  lastLoginDays: number | null;     // integer days since last login
+  featureBreadth: FeatureBreadth | null;
 }
 
 interface SegmentationResponse {
@@ -129,21 +136,21 @@ async function fetchMonthlyActiveUsers(
 }
 
 /**
- * Fetch last login (90 days, days since most recent non-zero session start)
+ * Check whether a single event type was fired in the last 30 days for an account.
+ *
+ * CRITICAL: Account filter MUST go inside the event object's `filters` array.
  */
-async function fetchLastLoginDays(
+async function checkFeatureUsed(
   apiKey: string,
   secretKey: string,
   accountAlias: string,
-  accountProperty: string
-): Promise<number | null> {
+  accountProperty: string,
+  eventType: string
+): Promise<boolean> {
   try {
-    const startDate = toAmplitudeDate(daysAgo(90));
-    const endDate = toAmplitudeDate(daysAgo(1));
-
     const params = new URLSearchParams({
       e: JSON.stringify({
-        event_type: '_session_start',
+        event_type: eventType,
         filters: [{
           subprop_type: 'user',
           subprop_key: accountProperty,
@@ -152,61 +159,49 @@ async function fetchLastLoginDays(
         }],
       }),
       m: 'totals',
-      i: '1',
-      start: startDate,
-      end: endDate,
+      i: '30',
+      start: toAmplitudeDate(daysAgo(30)),
+      end: toAmplitudeDate(daysAgo(1)),
     });
 
     const response = await fetch(
       `https://amplitude.com/api/2/events/segmentation?${params}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: buildBasicAuth(apiKey, secretKey),
-        },
-      }
+      { headers: { Authorization: buildBasicAuth(apiKey, secretKey) } }
     );
 
-    if (!response.ok) {
-      console.warn(
-        `Amplitude last login query failed: ${response.status} ${response.statusText}`
-      );
-      return null;
-    }
+    if (!response.ok) return false;
 
     const data = (await response.json()) as SegmentationResponse;
+    if (!data.data?.series?.[0] || data.data.series[0].length === 0) return false;
 
-    if (!data.data?.series?.[0] || !data.data.xValues) {
-      return null;
-    }
+    return data.data.series[0].some(v => v > 0);
+  } catch {
+    return false;
+  }
+}
 
-    const counts = data.data.series[0];
-    const xValues = data.data.xValues;
+/**
+ * Fetch feature breadth: how many feature categories the account used in the last 30 days.
+ */
+async function fetchFeatureBreadth(
+  apiKey: string,
+  secretKey: string,
+  accountAlias: string,
+  accountProperty: string,
+  featureEvents: FeatureEvent[]
+): Promise<FeatureBreadth | null> {
+  try {
+    const results = await Promise.all(
+      featureEvents.map(async fe => ({
+        category: fe.category,
+        used: await checkFeatureUsed(apiKey, secretKey, accountAlias, accountProperty, fe.eventType),
+      }))
+    );
 
-    // Find the most recent date (highest index) with > 0 count
-    let mostRecentIdx = -1;
-    for (let i = counts.length - 1; i >= 0; i--) {
-      if (counts[i] > 0) {
-        mostRecentIdx = i;
-        break;
-      }
-    }
-
-    if (mostRecentIdx === -1) {
-      // No non-zero entry found
-      return null;
-    }
-
-    const mostRecentDateStr = xValues[mostRecentIdx];
-    // Amplitude xValues are returned as "YYYY-MM-DD"; new Date() handles both ISO formats.
-    const mostRecentDate = new Date(mostRecentDateStr);
-    const today = new Date();
-    const diffMs = today.getTime() - mostRecentDate.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    return diffDays;
+    const used = results.filter(r => r.used).map(r => r.category);
+    return { used, total: featureEvents.length };
   } catch (error) {
-    console.warn('Error fetching last login days:', error);
+    console.warn('Error fetching feature breadth:', error);
     return null;
   }
 }
@@ -218,16 +213,17 @@ export async function fetchSignals(
   apiKey: string,
   secretKey: string,
   accountAlias: string,
-  accountProperty: string
+  accountProperty: string,
+  featureEvents: FeatureEvent[]
 ): Promise<AmplitudeSignals> {
-  const [mauResult, lastLoginDays] = await Promise.all([
+  const [mauResult, featureBreadth] = await Promise.all([
     fetchMauTrend(apiKey, secretKey, accountAlias, accountProperty),
-    fetchLastLoginDays(apiKey, secretKey, accountAlias, accountProperty),
+    fetchFeatureBreadth(apiKey, secretKey, accountAlias, accountProperty, featureEvents),
   ]);
 
   return {
     dauWauTrend: mauResult.trend,
     monthlyActiveUsers: mauResult.currentMAU,
-    lastLoginDays,
+    featureBreadth,
   };
 }

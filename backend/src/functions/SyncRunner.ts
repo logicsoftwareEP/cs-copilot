@@ -132,7 +132,6 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           dauWauTrend: null,
           monthlyActiveUsers: null,
           licenseUtilization: null,
-          lastLoginDays: null,
           featuresUsed: null,
           featureDetails: null,
           scoreDelta: null,
@@ -149,6 +148,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           config.amplitudeSecretKey,
           amplitudeAlias,
           config.amplitudeAccountProperty,
+          config.amplitudeFeatureEvents,
         );
 
         // Use stored licenses (manually entered) rather than HubSpot-synced data
@@ -158,6 +158,16 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         // Apply Zendesk penalty
         const adjusted = applyZendeskPenalty(baseResult, zendeskData);
         const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
+
+        // Build feature details map
+        let featureDetailsJson: string | null = null;
+        if (signals.featureBreadth) {
+          const details: Record<string, boolean> = {};
+          for (const fe of config.amplitudeFeatureEvents) {
+            details[fe.category] = signals.featureBreadth.used.includes(fe.category);
+          }
+          featureDetailsJson = JSON.stringify(details);
+        }
 
         // Calculate score delta vs yesterday
         const yesterdayScore = yesterdayScores.get(company.hubspotId);
@@ -178,9 +188,8 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           dauWauTrend: signals.dauWauTrend,
           monthlyActiveUsers: adjusted.monthlyActiveUsers,
           licenseUtilization: adjusted.licenseUtilization,
-          lastLoginDays: signals.lastLoginDays,
-          featuresUsed: null,
-          featureDetails: null,
+          featuresUsed: signals.featureBreadth?.used.length ?? null,
+          featureDetails: featureDetailsJson,
           scoreDelta,
           computedAt: new Date().toISOString(),
           zendeskPenalty: adjusted.zendeskPenalty,
@@ -203,7 +212,6 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           dauWauTrend: null,
           monthlyActiveUsers: null,
           licenseUtilization: null,
-          lastLoginDays: null,
           featuresUsed: null,
           featureDetails: null,
           scoreDelta: null,

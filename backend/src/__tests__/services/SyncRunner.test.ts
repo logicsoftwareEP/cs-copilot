@@ -67,12 +67,12 @@ const COMPANY_B: HubspotAccount = {
   domain: '',
 };
 
-// GOOD_SIGNALS: dauWauTrend ≥0.1 (40pts) + monthlyActiveUsers (unused, licenses null) + lastLoginDays <7 (25pts)
+// GOOD_SIGNALS: dauWauTrend ≥0.1 (40pts) + monthlyActiveUsers (unused, licenses null) + featureBreadth ≥75% (25pts)
 // With no licenses: rawScore = 40+25 = 65, maxPossible = 65 → finalScore = 100
 const GOOD_SIGNALS: AmplitudeSignals = {
   dauWauTrend: 0.15,
   monthlyActiveUsers: 50,
-  lastLoginDays: 3,
+  featureBreadth: { used: ['Activity Center', 'Time Tracking', 'Resources', 'Reporting', 'Dashboards', 'Financials', 'Invoices', 'Custom Forms', 'AI Features', 'Collaboration'], total: 12 },
 };
 
 function setupStoreMocks(opts: {
@@ -264,8 +264,8 @@ describe('runSync', () => {
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]); // licenses=null from HubSpot
-    // dauWau ≥0.1 (40) + MAU 50/100=50% ≥40% (15) + login <7 (25) = 80/100 = 80
-    mockFetchSignals.mockResolvedValue({ dauWauTrend: 0.15, monthlyActiveUsers: 50, lastLoginDays: 3 });
+    // dauWau ≥0.1 (40) + MAU 50/100=50% ≥40% (15) + featureBreadth ≥75% (25) = 80/100 = 80
+    mockFetchSignals.mockResolvedValue({ dauWauTrend: 0.15, monthlyActiveUsers: 50, featureBreadth: { used: ['A','B','C','D','E','F','G','H','I','J'], total: 12 } });
 
     await runSync();
 

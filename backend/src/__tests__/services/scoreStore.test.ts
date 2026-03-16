@@ -21,10 +21,14 @@ const SCORE_ENTITY = {
   score: 72,
   tier: 'watch',
   dauWauTrend: -0.05,
-  featureAdoption: 0.6,
-  lastLoginDays: 3,
+  monthlyActiveUsers: 45,
+  licenseUtilization: 0.6,
+  featuresUsed: 8,
+  featureDetails: '{"Activity Center":true,"Time Tracking":true}',
   scoreDelta: -5,
   computedAt: '2026-03-11T02:00:00.000Z',
+  zendeskPenalty: null,
+  zendeskDetails: null,
 };
 
 describe('ScoreStore', () => {

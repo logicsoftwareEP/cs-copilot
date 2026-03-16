@@ -60,7 +60,8 @@ export interface ChurnScore {
   dauWauTrend: number | null;
   monthlyActiveUsers: number | null;
   licenseUtilization: number | null;
-  lastLoginDays: number | null;
+  featuresUsed: number | null;
+  featureDetails: string | null;
   scoreDelta: number | null;
   computedAt: string;
   zendeskPenalty: number | null;

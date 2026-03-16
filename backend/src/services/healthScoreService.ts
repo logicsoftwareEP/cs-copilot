@@ -7,15 +7,17 @@ export interface HealthScoreResult {
   tier: HealthTier | 'unmapped';
   licenseUtilization: number | null;
   monthlyActiveUsers: number | null;
+  featuresUsed: number | null;
+  featureDetails: Record<string, boolean> | null;
 }
 
 /**
  * Compute health score from Amplitude signals and account license count.
  *
  * Scoring breakdown:
- * - DAU/WAU trend    (0–40 points) — same bands regardless of licenses
+ * - DAU/WAU trend      (0–40 points) — same bands regardless of licenses
  * - License utilisation (0–35 points) — MAU ÷ licenses; omitted when licenses not set
- * - Last login       (0–25 points)
+ * - Feature breadth    (0–25 points) — ratio of feature categories used in last 30d
  *
  * Normalisation:
  *   maxPossible = licenses !== null ? 100 : 65
@@ -31,15 +33,17 @@ export function computeScore(
   signals: AmplitudeSignals,
   licenses: number | null
 ): HealthScoreResult {
-  const { dauWauTrend, monthlyActiveUsers, lastLoginDays } = signals;
+  const { dauWauTrend, monthlyActiveUsers, featureBreadth } = signals;
 
   // If all Amplitude signals are null there is nothing to score
-  if (dauWauTrend === null && monthlyActiveUsers === null && lastLoginDays === null) {
+  if (dauWauTrend === null && monthlyActiveUsers === null && featureBreadth === null) {
     return {
       score: null,
       tier: 'unmapped',
       licenseUtilization: null,
       monthlyActiveUsers: null,
+      featuresUsed: null,
+      featureDetails: null,
     };
   }
 
@@ -77,22 +81,23 @@ export function computeScore(
     }
   }
 
-  // ── Component 3: Last login (0–25 points) ────────────────────────────────
-  let loginScore = 0;
-  if (lastLoginDays !== null) {
-    if (lastLoginDays < 7) {
-      loginScore = 25;
-    } else if (lastLoginDays < 14) {
-      loginScore = 16;
-    } else if (lastLoginDays <= 30) {
-      loginScore = 8;
+  // ── Component 3: Feature breadth (0–25 points) ────────────────────────────
+  let featureScore = 0;
+  if (featureBreadth !== null && featureBreadth.total > 0) {
+    const ratio = featureBreadth.used.length / featureBreadth.total;
+    if (ratio >= 0.75) {
+      featureScore = 25;
+    } else if (ratio >= 0.50) {
+      featureScore = 16;
+    } else if (ratio >= 0.25) {
+      featureScore = 8;
     } else {
-      loginScore = 0;
+      featureScore = 0;
     }
   }
 
   // ── Normalise ─────────────────────────────────────────────────────────────
-  const rawScore = dauWauScore + licenseScore + loginScore;
+  const rawScore = dauWauScore + licenseScore + featureScore;
   const maxPossible = licenses !== null ? 100 : 65;
   const score = Math.round((rawScore / maxPossible) * 100);
 
@@ -113,6 +118,8 @@ export function computeScore(
     tier,
     licenseUtilization,
     monthlyActiveUsers,
+    featuresUsed: featureBreadth ? featureBreadth.used.length : null,
+    featureDetails: null, // populated by caller with full category map
   };
 }
 

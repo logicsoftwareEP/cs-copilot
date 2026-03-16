@@ -23,6 +23,8 @@ function baseResult(overrides: Partial<HealthScoreResult> = {}): HealthScoreResu
     tier: 'healthy',
     licenseUtilization: 0.8,
     monthlyActiveUsers: 80,
+    featuresUsed: 8,
+    featureDetails: null,
     ...overrides,
   };
 }
