@@ -9,23 +9,23 @@ export default {
       },
       colors: {
         obs: {
-          // Surfaces
-          void:      '#0B0D11',
-          base:      '#111318',
-          raised:    '#1A1D25',
-          card:      '#22252E',
-          elevated:  '#2A2E38',
+          // Surfaces — resolved from CSS custom properties
+          void:      'var(--obs-void)',
+          base:      'var(--obs-base)',
+          raised:    'var(--obs-raised)',
+          card:      'var(--obs-card)',
+          elevated:  'var(--obs-elevated)',
 
           // Borders
-          edge:      '#2E3340',
-          rule:      '#363B4A',
+          edge:      'var(--obs-edge)',
+          rule:      'var(--obs-rule)',
 
           // Text
-          bright:    '#E4E8EF',
-          text:      '#C1C7D2',
-          dim:       '#8891A0',
-          ghost:     '#5A6170',
-          invisible: '#3A3F4E',
+          bright:    'var(--obs-bright)',
+          text:      'var(--obs-text)',
+          dim:       'var(--obs-dim)',
+          ghost:     'var(--obs-ghost)',
+          invisible: 'var(--obs-invisible)',
 
           // Accent (luminous purple)
           accent:    '#7C6AFF',
@@ -37,7 +37,7 @@ export default {
           amber:     '#FBBF24',
           'amber-dim': '#FBBF2433',
         },
-        // Health tier colours — vivid against dark
+        // Health tier colours — vivid in both themes
         tier: {
           healthy:   '#34D399',
           'healthy-bg': '#34D39915',
@@ -54,8 +54,8 @@ export default {
       boxShadow: {
         'glow-sm': '0 0 12px -3px rgba(124, 106, 255, 0.25)',
         'glow':    '0 0 24px -4px rgba(124, 106, 255, 0.3)',
-        'card':    '0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2)',
-        'panel':   '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(46, 51, 64, 0.5)',
+        'card':    'var(--shadow-card)',
+        'panel':   'var(--shadow-panel)',
       },
       animation: {
         'slide-in': 'slideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)',

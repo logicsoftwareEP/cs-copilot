@@ -4,42 +4,94 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Theme variables ─────────────────────────────────────────────────────── */
+
+:root {
+  /* Dark theme (default) */
+  --obs-void:      #0B0D11;
+  --obs-base:      #111318;
+  --obs-raised:    #1A1D25;
+  --obs-card:      #22252E;
+  --obs-elevated:  #2A2E38;
+  --obs-edge:      #2E3340;
+  --obs-rule:      #363B4A;
+  --obs-bright:    #E4E8EF;
+  --obs-text:      #C1C7D2;
+  --obs-dim:       #8891A0;
+  --obs-ghost:     #5A6170;
+  --obs-invisible: #3A3F4E;
+  --shadow-card:   0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-panel:  0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(46, 51, 64, 0.5);
+  --scrollbar-thumb: #363B4A;
+  --scrollbar-hover: #5A6170;
+  --panel-scrollbar: #2E3340;
+  --panel-scrollbar-hover: #363B4A;
+  --row-hover-bg:  #1A1D25;
+  --select-arrow:  %235A6170;
+  --noise-opacity: 0.018;
+}
+
+[data-theme="light"] {
+  --obs-void:      #E8EBF0;
+  --obs-base:      #F3F5F8;
+  --obs-raised:    #FFFFFF;
+  --obs-card:      #F8F9FB;
+  --obs-elevated:  #EEEEF2;
+  --obs-edge:      #D8DCE4;
+  --obs-rule:      #C8CDD6;
+  --obs-bright:    #1A1D25;
+  --obs-text:      #333844;
+  --obs-dim:       #5A6170;
+  --obs-ghost:     #8891A0;
+  --obs-invisible: #C1C7D2;
+  --shadow-card:   0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-panel:  0 8px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --scrollbar-thumb: #C8CDD6;
+  --scrollbar-hover: #8891A0;
+  --panel-scrollbar: #D8DCE4;
+  --panel-scrollbar-hover: #C8CDD6;
+  --row-hover-bg:  #EEF0F4;
+  --select-arrow:  %238891A0;
+  --noise-opacity: 0;
+}
+
 @layer base {
   body {
     font-family: 'Sora', sans-serif;
-    color: #E4E8EF;
-    background-color: #111318;
+    color: var(--obs-bright);
+    background-color: var(--obs-base);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  /* Subtle noise grain overlay */
+  /* Subtle noise grain overlay (dark only) */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
     pointer-events: none;
     z-index: 9999;
-    opacity: 0.018;
+    opacity: var(--noise-opacity);
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   }
 }
 
-/* Scrollbar — dark, thin */
+/* Scrollbar */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #363B4A; border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: #5A6170; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
 
 /* Panel scrollbar */
 .obs-scrollbar::-webkit-scrollbar { width: 4px; }
 .obs-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.obs-scrollbar::-webkit-scrollbar-thumb { background: #2E3340; border-radius: 4px; }
-.obs-scrollbar::-webkit-scrollbar-thumb:hover { background: #363B4A; }
+.obs-scrollbar::-webkit-scrollbar-thumb { background: var(--panel-scrollbar); border-radius: 4px; }
+.obs-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--panel-scrollbar-hover); }
 
-/* Select arrow override for dark theme */
+/* Select arrow override */
 select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A6170' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='var(--select-arrow)' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.6rem center;
   padding-right: 2rem;
@@ -63,7 +115,7 @@ select {
   transition: background-color 0.15s ease;
 }
 .row-hover:hover {
-  background-color: #1A1D25;
+  background-color: var(--row-hover-bg);
 }
 
 /* Score number glow */
