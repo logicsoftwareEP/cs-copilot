@@ -64,6 +64,10 @@ async function fetchMauTrend(
  * Fetch Monthly Active Users (30-day unique users) for an account.
  * Uses Amplitude Segmentation API with i=30 to get the aggregate count
  * for the full 30-day window.
+ *
+ * CRITICAL: Account filter MUST go inside the event object's `filters` array,
+ * NOT as a top-level `filters` query param. Amplitude silently ignores
+ * top-level filters and returns global totals. This bug has bitten us twice.
  */
 async function fetchMonthlyActiveUsers(
   apiKey: string,
@@ -77,22 +81,20 @@ async function fetchMonthlyActiveUsers(
     const startDate = toAmplitudeDate(daysAgo(startDaysAgo));
     const endDate = toAmplitudeDate(daysAgo(endDaysAgo));
 
-    const filters = JSON.stringify([
-      {
-        subprop_type: 'user',
-        subprop_key: accountProperty,
-        subprop_op: 'is',
-        subprop_value: [accountAlias],
-      },
-    ]);
-
     const params = new URLSearchParams({
-      e: JSON.stringify({ event_type: '_active' }),
+      e: JSON.stringify({
+        event_type: '_active',
+        filters: [{
+          subprop_type: 'user',
+          subprop_key: accountProperty,
+          subprop_op: 'is',
+          subprop_value: [accountAlias],
+        }],
+      }),
       m: 'uniques',
       i: '30',
       start: startDate,
       end: endDate,
-      filters,
     });
 
     const response = await fetch(
@@ -139,22 +141,20 @@ async function fetchLastLoginDays(
     const startDate = toAmplitudeDate(daysAgo(90));
     const endDate = toAmplitudeDate(daysAgo(1));
 
-    const filters = JSON.stringify([
-      {
-        subprop_type: 'user',
-        subprop_key: accountProperty,
-        subprop_op: 'is',
-        subprop_value: [accountAlias],
-      },
-    ]);
-
     const params = new URLSearchParams({
-      e: JSON.stringify({ event_type: '_session_start' }),
+      e: JSON.stringify({
+        event_type: '_session_start',
+        filters: [{
+          subprop_type: 'user',
+          subprop_key: accountProperty,
+          subprop_op: 'is',
+          subprop_value: [accountAlias],
+        }],
+      }),
       m: 'totals',
       i: '1',
       start: startDate,
       end: endDate,
-      filters,
     });
 
     const response = await fetch(

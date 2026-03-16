@@ -84,6 +84,18 @@ Three Azure Table Storage tables:
 - **Env vars needed**: `HUBSPOT_API_KEY`, `AMPLITUDE_API_KEY`, `AMPLITUDE_SECRET_KEY` (required); `AMPLITUDE_ACCOUNT_PROPERTY` (default: `account_name`), `AMPLITUDE_FEATURES_TOTAL` (default: `10`)
 - **Deployment: pending**
 
+## Amplitude API — CRITICAL
+
+**Account filters MUST go inside the event object**, not as a top-level `filters` query param. Amplitude silently ignores top-level filters and returns global totals across all accounts. This bug has occurred 3 times.
+
+```typescript
+// CORRECT:
+e: JSON.stringify({ event_type: '_active', filters: [{ subprop_type: 'user', ... }] })
+
+// WRONG (silently returns global data):
+e: JSON.stringify({ event_type: '_active' }), filters: JSON.stringify([{ ... }])
+```
+
 ## Testing Notes
 
 - **Base64 / Basic Auth on Windows**: do NOT use `echo -n "key:secret" | base64` in bash — Windows Git Bash can silently include a trailing CR, producing a wrong hash. Use Python instead:
