@@ -9,6 +9,7 @@ export interface Account {
   syncedAt: string;
   licenses: number | null;
   domain: string;
+  hidden: boolean;
 }
 
 export interface AccountSummary extends Account {

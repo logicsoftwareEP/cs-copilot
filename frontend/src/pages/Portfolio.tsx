@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses, updateAccountArr, upsertMapping, deleteMapping } from '../services/api';
+import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses, updateAccountArr, updateAccountHidden, upsertMapping, deleteMapping } from '../services/api';
 import { AccountSummary, AccountDetail, HealthTier, ChurnScore } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -546,6 +546,8 @@ export default function Portfolio() {
   const [sortCol, setSortCol]             = useState<SortCol>('score');
   const [sortDir, setSortDir]             = useState<'asc' | 'desc'>('asc');
   const [selected, setSelected]           = useState<AccountSummary | null>(null);
+  const [showHidden, setShowHidden]       = useState(false);
+  const canManage = !isCSM; // admin + supervisor can hide/unhide
 
   // Theme toggle
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -649,6 +651,18 @@ export default function Portfolio() {
     setEditingAlias(null);
   }
 
+  async function handleToggleHidden(accountId: string, currentHidden: boolean) {
+    const newHidden = !currentHidden;
+    try {
+      await updateAccountHidden(accountId, newHidden);
+      setAccounts(prev => prev.map(a =>
+        a.accountId === accountId ? { ...a, hidden: newHidden } : a
+      ));
+    } catch (err) {
+      console.warn('Failed to toggle hidden:', err);
+    }
+  }
+
   function handleSortClick(col: SortCol) {
     if (sortCol === col) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -658,14 +672,17 @@ export default function Portfolio() {
     }
   }
 
+  const activeAccounts = useMemo(() => accounts.filter(a => !a.hidden), [accounts]);
+
   const uniqueOwners = useMemo(() =>
-    [...new Set(accounts.map(a => a.csmName).filter(Boolean))].sort()
-  , [accounts]);
+    [...new Set(activeAccounts.map(a => a.csmName).filter(Boolean))].sort()
+  , [activeAccounts]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return sortRows(
       accounts.filter(a => {
+        if (a.hidden && !showHidden) return false;
         if (q && !(a.accountName ?? '').toLowerCase().includes(q)
             && !(a.csmName ?? '').toLowerCase().includes(q)
             && !(a.amplitudeAlias ?? '').toLowerCase().includes(q)) return false;
@@ -676,17 +693,17 @@ export default function Portfolio() {
       sortCol,
       sortDir,
     );
-  }, [accounts, search, filterTier, filterOwner, sortCol, sortDir]);
+  }, [accounts, search, filterTier, filterOwner, sortCol, sortDir, showHidden]);
 
-  const unmappedCount = accounts.filter(a => !a.amplitudeAlias).length;
+  const unmappedCount = activeAccounts.filter(a => !a.amplitudeAlias).length;
 
   // Portfolio metrics
-  const totalArr = accounts.reduce((sum, a) => sum + (a.arr ?? 0), 0);
-  const scoredAccounts = accounts.filter(a => a.score !== null);
+  const totalArr = activeAccounts.reduce((sum, a) => sum + (a.arr ?? 0), 0);
+  const scoredAccounts = activeAccounts.filter(a => a.score !== null);
   const avgScore = scoredAccounts.length > 0
     ? Math.round(scoredAccounts.reduce((sum, a) => sum + (a.score ?? 0), 0) / scoredAccounts.length)
     : null;
-  const atRiskCount = accounts.filter(a => a.tier === 'at-risk' || a.tier === 'critical').length;
+  const atRiskCount = activeAccounts.filter(a => a.tier === 'at-risk' || a.tier === 'critical').length;
 
   function SortTH({ col, children, className = '' }: { col: SortCol; children: React.ReactNode; className?: string }) {
     const active = sortCol === col;
@@ -783,18 +800,18 @@ export default function Portfolio() {
       <main className="max-w-[1440px] mx-auto px-6 py-6">
 
         {/* ── Metric cards ── */}
-        {!loading && !error && accounts.length > 0 && (
+        {!loading && !error && activeAccounts.length > 0 && (
           <div className="grid grid-cols-4 gap-4 mb-6">
             <MetricCard
               label="Accounts"
-              value={accounts.length}
+              value={activeAccounts.length}
               sub={`${scoredAccounts.length} scored`}
               delay={1}
             />
             <MetricCard
               label="Portfolio ARR"
               value={totalArr >= 1_000_000 ? `$${(totalArr / 1_000_000).toFixed(1)}M` : `$${(totalArr / 1000).toFixed(0)}k`}
-              sub={accounts.length > 0 ? `avg ${formatArr(totalArr / accounts.length)}` : undefined}
+              sub={activeAccounts.length > 0 ? `avg ${formatArr(totalArr / activeAccounts.length)}` : undefined}
               delay={2}
             />
             <MetricCard
@@ -807,7 +824,7 @@ export default function Portfolio() {
             <MetricCard
               label="At Risk"
               value={atRiskCount}
-              sub={atRiskCount > 0 ? `${accounts.filter(a => a.tier === 'critical').length} critical` : 'None'}
+              sub={atRiskCount > 0 ? `${activeAccounts.filter(a => a.tier === 'critical').length} critical` : 'None'}
               accent={atRiskCount > 0 ? '#F87171' : '#34D399'}
               delay={4}
             />
@@ -815,8 +832,8 @@ export default function Portfolio() {
         )}
 
         {/* ── Top 10 Needs Review ── */}
-        {!loading && !error && accounts.length > 0 && (() => {
-          const needsReview = accounts
+        {!loading && !error && activeAccounts.length > 0 && (() => {
+          const needsReview = activeAccounts
             .filter(a => a.tier === 'critical' || a.tier === 'at-risk')
             .sort((a, b) => (b.arr ?? 0) - (a.arr ?? 0))
             .slice(0, 10);
@@ -858,7 +875,7 @@ export default function Portfolio() {
         })()}
 
         {/* ── Toolbar ── */}
-        {!loading && !error && accounts.length > 0 && (
+        {!loading && !error && activeAccounts.length > 0 && (
           <div className="bg-obs-raised border border-obs-edge rounded-xl px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
             {/* Search */}
             <div className="relative flex-1 min-w-52">
@@ -901,6 +918,18 @@ export default function Portfolio() {
               <option value="unmapped">Unmapped</option>
             </select>
 
+            {canManage && (
+              <label className="flex items-center gap-1.5 text-[14px] text-obs-ghost cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showHidden}
+                  onChange={e => setShowHidden(e.target.checked)}
+                  className="accent-obs-accent"
+                />
+                Show hidden
+              </label>
+            )}
+
             {/* Clear + count */}
             {(search || filterTier !== 'all' || filterOwner !== 'all') && (
               <button
@@ -911,9 +940,9 @@ export default function Portfolio() {
               </button>
             )}
             <span className="text-[14px] text-obs-ghost ml-auto whitespace-nowrap font-mono">
-              {filtered.length !== accounts.length
-                ? `${filtered.length} / ${accounts.length}`
-                : `${accounts.length} accounts`}
+              {filtered.length !== (showHidden ? accounts.length : activeAccounts.length)
+                ? `${filtered.length} / ${showHidden ? accounts.length : activeAccounts.length}`
+                : `${showHidden ? accounts.length : activeAccounts.length} accounts`}
             </span>
           </div>
         )}
@@ -957,7 +986,7 @@ export default function Portfolio() {
         )}
 
         {/* ── Table ── */}
-        {!loading && !error && accounts.length > 0 && (
+        {!loading && !error && activeAccounts.length > 0 && (
           <div className="bg-obs-raised border border-obs-edge rounded-xl overflow-hidden shadow-card">
             {filtered.length === 0 ? (
               <div className="py-16 text-center text-[14px] text-obs-ghost">
@@ -974,6 +1003,7 @@ export default function Portfolio() {
                 <table className="w-full text-[14px]">
                   <thead>
                     <tr className="bg-obs-card/50 border-b border-obs-edge">
+                      {canManage && <th className="px-2 py-3 w-8" />}
                       <SortTH col="accountName">Account</SortTH>
                       <SortTH col="csmName">Owner</SortTH>
                       <SortTH col="tier">Health</SortTH>
@@ -995,8 +1025,32 @@ export default function Portfolio() {
                           onClick={() => setSelected(isActive ? null : account)}
                           className={`cursor-pointer transition-colors border-b border-obs-edge/50 ${
                             isActive ? 'bg-obs-accent/8' : 'row-hover'
-                          }`}
+                          } ${account.hidden ? 'opacity-40' : ''}`}
                         >
+                          {canManage && (
+                            <td className="px-2 py-3 w-8" onClick={e => e.stopPropagation()}>
+                              <button
+                                onClick={() => handleToggleHidden(account.accountId, account.hidden)}
+                                className={`transition-opacity ${account.hidden ? 'opacity-50 hover:opacity-80' : 'opacity-20 hover:opacity-50'}`}
+                                title={account.hidden ? 'Unhide account' : 'Hide account'}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  {account.hidden ? (
+                                    <>
+                                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                                      <line x1="1" y1="1" x2="23" y2="23" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                      <circle cx="12" cy="12" r="3" />
+                                    </>
+                                  )}
+                                </svg>
+                              </button>
+                            </td>
+                          )}
                           {/* Account name + tier bar */}
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
