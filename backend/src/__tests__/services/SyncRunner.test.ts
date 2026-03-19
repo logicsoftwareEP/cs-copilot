@@ -60,6 +60,7 @@ const COMPANY_A: Account = {
   syncedAt: '2026-03-12T02:00:00.000Z',
   licenses: null,
   domain: '',
+  hidden: false,
 };
 
 const COMPANY_B: Account = {
@@ -73,6 +74,7 @@ const COMPANY_B: Account = {
   syncedAt: '2026-03-12T02:00:00.000Z',
   licenses: null,
   domain: '',
+  hidden: false,
 };
 
 // GOOD_SIGNALS: dauWauTrend ≥0.1 (40pts) + monthlyActiveUsers (unused, licenses null) + featureBreadth ≥75% (25pts)
@@ -113,6 +115,7 @@ function setupStoreMocks(opts: {
     listAccounts,
     getById: jest.fn(),
     updateLicenses: jest.fn(),
+    updateHidden: jest.fn(),
   } as any));
 
   MockMappingStore.mockImplementation(() => ({
@@ -558,6 +561,34 @@ describe('runSync', () => {
   });
 
   // ── Alias validation tests ──────────────────────────────────────────────
+
+  it('hidden accounts skip scoring entirely', async () => {
+    const storedA: Account = { ...COMPANY_A, hidden: true };
+    const storedB: Account = { ...COMPANY_B, hidden: false };
+    const { upsertScore } = setupStoreMocks({
+      mappings: [
+        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
+        { accountId: 'hs-002', amplitudeAlias: 'beta' },
+      ],
+      storedAccounts: [storedA, storedB],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A, COMPANY_B]);
+    mockFetchSignals.mockResolvedValue({
+      dauWauTrend: 0.15,
+      monthlyActiveUsers: 50,
+      featureBreadth: { used: ['Activity Center', 'Time Tracking', 'Resources', 'Reporting', 'Dashboards', 'Financials', 'Invoices', 'Custom Forms', 'AI Features', 'Collaboration'], total: 12 },
+    });
+    mockFetchAllZendeskTickets.mockResolvedValue(null);
+
+    const result = await runSync();
+    expect(result.synced).toBe(2);
+    expect(result.scored).toBe(1);
+    expect(upsertScore).toHaveBeenCalledTimes(1);
+    expect(upsertScore).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'hs-002' })
+    );
+  });
 
   it('all-zero signals with invalid alias → aliasStatus not-found, score null', async () => {
     const { upsertScore } = setupStoreMocks({

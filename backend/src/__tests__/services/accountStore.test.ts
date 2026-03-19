@@ -1,5 +1,5 @@
 import { AccountStore } from '../../services/accountStore';
-import { HubspotAccount } from '../../types';
+import { Account } from '../../types';
 
 const mockUpsertEntity = jest.fn().mockResolvedValue(undefined);
 const mockListEntities = jest.fn();
@@ -20,8 +20,8 @@ jest.mock('@azure/data-tables', () => ({
   ),
 }));
 
-const SAMPLE: HubspotAccount = {
-  hubspotId: 'hs-123',
+const SAMPLE: Account = {
+  accountId: 'hs-123',
   accountName: 'Acme Corp',
   csmName: 'Jane Smith',
   csmEmail: 'jane@example.com',
@@ -31,6 +31,7 @@ const SAMPLE: HubspotAccount = {
   syncedAt: '2026-03-11T02:00:00.000Z',
   licenses: null,
   domain: '',
+  hidden: false,
 };
 
 describe('AccountStore', () => {
@@ -41,7 +42,7 @@ describe('AccountStore', () => {
     store = new AccountStore('UseDevelopmentStorage=true', 'accounts');
   });
 
-  it('upserts with hubspotId as RowKey', async () => {
+  it('upserts with accountId as rowKey', async () => {
     await store.upsertAccount(SAMPLE);
     expect(mockUpsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -73,7 +74,7 @@ describe('AccountStore', () => {
 
     const results = await store.listAccounts();
     expect(results).toHaveLength(1);
-    expect(results[0].hubspotId).toBe('hs-123');
+    expect(results[0].accountId).toBe('hs-123');
     expect(results[0].accountName).toBe('Acme Corp');
   });
 
@@ -97,6 +98,6 @@ describe('AccountStore', () => {
     });
 
     const result = await store.getById('hs-123');
-    expect(result?.hubspotId).toBe('hs-123');
+    expect(result?.accountId).toBe('hs-123');
   });
 });

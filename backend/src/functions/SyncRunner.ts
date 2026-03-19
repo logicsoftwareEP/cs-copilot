@@ -184,6 +184,11 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
     const errors: string[] = [];
 
     for (const company of companies) {
+      // Skip scoring for hidden accounts
+      if (storedMap.get(company.accountId)?.hidden) {
+        continue;
+      }
+
       const amplitudeAlias = mappingMap.get(company.accountId);
       const accountDomain = storedMap.get(company.accountId)?.domain ?? '';
       const zendeskData = accountDomain ? (zendeskMap.get(accountDomain) ?? null) : null;
