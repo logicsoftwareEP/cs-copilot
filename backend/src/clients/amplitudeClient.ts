@@ -207,6 +207,54 @@ async function fetchFeatureBreadth(
 }
 
 /**
+ * Validate whether an alias has any historical activity in Amplitude.
+ * Queries _active events for the last 365 days with i=30 (monthly buckets).
+ * Returns true if any bucket has > 0 users, false if all are zero.
+ */
+export async function validateAlias(
+  apiKey: string,
+  secretKey: string,
+  accountAlias: string,
+  accountProperty: string
+): Promise<boolean> {
+  try {
+    const params = new URLSearchParams({
+      e: JSON.stringify({
+        event_type: '_active',
+        filters: [{
+          subprop_type: 'user',
+          subprop_key: accountProperty,
+          subprop_op: 'is',
+          subprop_value: [accountAlias],
+        }],
+      }),
+      m: 'uniques',
+      i: '30',
+      start: toAmplitudeDate(daysAgo(365)),
+      end: toAmplitudeDate(daysAgo(1)),
+    });
+
+    const response = await fetch(
+      `https://amplitude.com/api/2/events/segmentation?${params}`,
+      { headers: { Authorization: buildBasicAuth(apiKey, secretKey) } }
+    );
+
+    if (!response.ok) {
+      console.warn(`Amplitude alias validation failed: ${response.status} ${response.statusText}`);
+      return true; // fail-open: don't flag as not-found on API error
+    }
+
+    const data = (await response.json()) as SegmentationResponse;
+    if (!data.data?.series?.[0]) return false;
+
+    return data.data.series[0].some(v => v > 0);
+  } catch (error) {
+    console.warn('Error validating alias:', error);
+    return true; // fail-open on network error
+  }
+}
+
+/**
  * Fetch all Amplitude signals for an account
  */
 export async function fetchSignals(
