@@ -67,6 +67,7 @@ async function listAccounts(
         scoreDelta: scoreRow?.scoreDelta ?? null,
         amplitudeAlias: mappingLookup.get(account.accountId) ?? null,
         aliasStatus: scoreRow?.aliasStatus ?? null,
+        hidden: account.hidden,
       };
     });
 
@@ -74,7 +75,7 @@ async function listAccounts(
     if (user.role === 'csm') {
       const email = user.email.toLowerCase();
       summary = summary.filter(a =>
-        (a.csmEmail ?? '').toLowerCase() === email
+        (a.csmEmail ?? '').toLowerCase() === email && !a.hidden
       );
     }
 
@@ -105,7 +106,7 @@ async function getAccount(
     if (req.method === 'PATCH') {
       requireRole(user, 'admin', 'supervisor');
 
-      const body = await req.json() as { licenses?: number | null; arr?: number };
+      const body = await req.json() as { licenses?: number | null; arr?: number; hidden?: boolean };
       const { accounts } = makeStores();
       await accounts.ensureTable();
 
@@ -122,6 +123,13 @@ async function getAccount(
         if (!isNaN(arr) && arr >= 0) {
           await accounts.updateArr(accountId, arr);
         }
+      }
+
+      if (body.hidden !== undefined) {
+        if (typeof body.hidden !== 'boolean') {
+          return { status: 400, headers: CORS_HEADERS, body: 'hidden must be a boolean.' };
+        }
+        await accounts.updateHidden(accountId, body.hidden);
       }
 
       return { status: 204, headers: CORS_HEADERS };
@@ -158,6 +166,7 @@ async function getAccount(
         tier: latestScore?.tier ?? null,
         scoreDelta: latestScore?.scoreDelta ?? null,
         aliasStatus: latestScore?.aliasStatus ?? null,
+        hidden: account.hidden,
         amplitudeAlias: mapping?.amplitudeAlias ?? null,
         scoreBreakdown: latestScore
           ? {
