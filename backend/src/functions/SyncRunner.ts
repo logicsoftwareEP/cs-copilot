@@ -3,10 +3,22 @@ import { getConfig } from '../config';
 import { AccountStore } from '../services/accountStore';
 import { MappingStore } from '../services/mappingStore';
 import { ScoreStore } from '../services/scoreStore';
+import { UserStore } from '../services/userStore';
 import { searchActiveCompanies } from '../clients/hubspotClient';
-import { fetchSignals } from '../clients/amplitudeClient';
-import { fetchZendeskTickets, ZendeskTicketData } from '../clients/zendeskClient';
+import { fetchAccountsFromSql, SqlFetchResult } from '../clients/sqlClient';
+import { fetchSignals, validateAlias, AmplitudeSignals } from '../clients/amplitudeClient';
+import { Account } from '../types';
+import { fetchAllZendeskTickets, ZendeskTicketData } from '../clients/zendeskClient';
 import { computeScore, applyZendeskPenalty, computeZendeskPenalty } from '../services/healthScoreService';
+
+function isAllZeroSignals(signals: AmplitudeSignals): boolean {
+  return (
+    signals.dauWauTrend === null &&
+    signals.monthlyActiveUsers === 0 &&
+    signals.featureBreadth !== null &&
+    signals.featureBreadth.used.length === 0
+  );
+}
 
 export interface SyncResult {
   synced: number;   // accounts upserted to accountStore
@@ -38,68 +50,123 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
       scoreStore.ensureTable(),
     ]);
 
-    // Fetch all active HubSpot companies
-    const companies = await searchActiveCompanies(config.hubspotApiKey);
-    log(`Fetched ${companies.length} active companies from HubSpot`);
+    // ── Fetch accounts from configured data source ─────────────────────────
+    let companies: Account[];
+    let sqlResult: SqlFetchResult | null = null;
+
+    if (config.dataSource === 'sql') {
+      if (!config.sqlConnectionString || !config.sqlLogin || !config.sqlPassword) {
+        throw new Error('SQL data source selected but SQL credentials not configured');
+      }
+      sqlResult = await fetchAccountsFromSql(
+        config.sqlConnectionString, config.sqlLogin, config.sqlPassword
+      );
+      companies = sqlResult.accounts;
+      log(`Fetched ${companies.length} active accounts from SQL Server`);
+    } else {
+      if (!config.hubspotApiKey) {
+        throw new Error('HubSpot data source selected but HUBSPOT_API_KEY not configured');
+      }
+      companies = await searchActiveCompanies(config.hubspotApiKey);
+      log(`Fetched ${companies.length} active companies from HubSpot`);
+    }
+
+    // ── Resolve csmName → csmEmail via users table ────────────────────────
+    // SQL view provides CSM name only; look up the matching user to get email.
+    const userStore = new UserStore(config.storageConnectionString, config.tableUsers);
+    await userStore.ensureTable();
+    const allUsers = await userStore.listUsers();
+    const nameToEmail = new Map(
+      allUsers.map(u => [u.displayName.toLowerCase(), u.email.toLowerCase()])
+    );
+    let emailResolved = 0;
+    for (const company of companies) {
+      if (!company.csmEmail && company.csmName) {
+        const email = nameToEmail.get(company.csmName.toLowerCase());
+        if (email) {
+          company.csmEmail = email;
+          emailResolved++;
+        }
+      }
+    }
+    if (emailResolved > 0) log(`Resolved ${emailResolved} CSM emails from users table`);
 
     // Upsert each company into the account store (Merge mode preserves licenses)
     for (const company of companies) {
       await accountStore.upsertAccount(company);
     }
 
+    // ── Auto-sync aliases from SQL (before listMappings so scoring sees them) ──
+    // Only creates mappings for accounts that don't have one yet.
+    // Existing mappings are never overwritten — they may have been corrected
+    // for Amplitude casing differences (SQL collation is case-insensitive).
+    if (sqlResult?.aliases.size) {
+      const existingMappings = await mappingStore.listMappings();
+      const existingSet = new Set(existingMappings.map(m => m.accountId));
+      let aliasCount = 0;
+
+      for (const [accountId, alias] of sqlResult.aliases) {
+        if (!alias) continue;
+        if (existingSet.has(accountId)) continue; // preserve existing mapping
+        const name = companies.find(c => c.accountId === accountId)?.accountName ?? '';
+        await mappingStore.upsertMapping(accountId, name, alias);
+        aliasCount++;
+      }
+      if (aliasCount > 0) log(`Auto-synced ${aliasCount} new Amplitude aliases from SQL`);
+    }
+
     // Reload stored accounts to pick up manually-entered licenses
     const storedAccounts = await accountStore.listAccounts();
-    const storedMap = new Map(storedAccounts.map(a => [a.hubspotId, a]));
+    const storedMap = new Map(storedAccounts.map(a => [a.accountId, a]));
 
-    // Build mapping lookup: hubspotId → amplitudeAlias
+    // Apply SQL licences where no manual override exists
+    if (sqlResult?.licences.size) {
+      let licCount = 0;
+      for (const [accountId, licenceCount] of sqlResult.licences) {
+        const stored = storedMap.get(accountId);
+        if (stored && (stored.licenses === null || stored.licenses === 0)) {
+          await accountStore.updateLicenses(accountId, licenceCount);
+          // Update the in-memory map so scoring uses the new value
+          stored.licenses = licenceCount;
+          licCount++;
+        }
+      }
+      if (licCount > 0) log(`Auto-synced ${licCount} licence counts from SQL`);
+    }
+
+    // Log stale accounts (in Table Storage but not in current data source)
+    const sourceIds = new Set(companies.map(c => c.accountId));
+    const staleAccounts = storedAccounts.filter(a => !sourceIds.has(a.accountId));
+    if (staleAccounts.length > 0) {
+      log(`Warning: ${staleAccounts.length} accounts in Table Storage not found in data source (stale)`);
+    }
+
+    // Build mapping lookup: accountId → amplitudeAlias
     const mappingList = await mappingStore.listMappings();
     const mappingMap = new Map<string, string>(
-      mappingList.map(m => [m.hubspotId, m.amplitudeAlias])
+      mappingList.map(m => [m.accountId, m.amplitudeAlias])
     );
 
     // ── Zendesk fetch phase ─────────────────────────────────────────────────
     const zendeskEnabled = !!(config.zendeskSubdomain && config.zendeskEmail && config.zendeskApiToken);
-    const zendeskMap = new Map<string, ZendeskTicketData | null>();
+    let zendeskMap = new Map<string, ZendeskTicketData>();
     let zendeskFetched = 0;
 
     if (zendeskEnabled) {
-      // Collect unique non-empty domains from stored accounts
-      const domains = new Set<string>();
-      for (const acct of storedAccounts) {
-        if (acct.domain) {
-          domains.add(acct.domain);
-        }
+      const result = await fetchAllZendeskTickets(
+        config.zendeskSubdomain!,
+        config.zendeskEmail!,
+        config.zendeskApiToken!
+      );
+
+      if (result === null) {
+        log('Zendesk: fetch failed (possible auth failure)');
+      } else {
+        zendeskMap = result;
+        zendeskFetched = zendeskMap.size;
+        const totalTickets = [...zendeskMap.values()].reduce((sum, d) => sum + d.openCount, 0);
+        log(`Zendesk: ${totalTickets} open tickets across ${zendeskFetched} domains`);
       }
-
-      const domainArray = Array.from(domains);
-      let isFirstCall = true;
-
-      for (const domain of domainArray) {
-        const data = await fetchZendeskTickets(
-          config.zendeskSubdomain!,
-          config.zendeskEmail!,
-          config.zendeskApiToken!,
-          domain
-        );
-
-        if (isFirstCall && data === null) {
-          log('Zendesk: first call returned null (possible auth failure) — skipping remaining domains');
-          break;
-        }
-        isFirstCall = false;
-
-        zendeskMap.set(domain, data);
-        if (data !== null) {
-          zendeskFetched++;
-        }
-
-        // Rate limiting: 100 req/min → 600ms between calls
-        if (domainArray.indexOf(domain) < domainArray.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 600));
-        }
-      }
-
-      log(`Zendesk: fetched ${zendeskFetched}/${domains.size} domains, ${zendeskFetched} with data`);
     } else {
       log('Zendesk: disabled (missing config)');
     }
@@ -117,15 +184,15 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
     const errors: string[] = [];
 
     for (const company of companies) {
-      const amplitudeAlias = mappingMap.get(company.hubspotId);
-      const accountDomain = storedMap.get(company.hubspotId)?.domain ?? '';
+      const amplitudeAlias = mappingMap.get(company.accountId);
+      const accountDomain = storedMap.get(company.accountId)?.domain ?? '';
       const zendeskData = accountDomain ? (zendeskMap.get(accountDomain) ?? null) : null;
 
       if (!amplitudeAlias) {
         // No Amplitude mapping — upsert a placeholder score
         const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
         await scoreStore.upsertScore({
-          hubspotId: company.hubspotId,
+          accountId: company.accountId,
           date: todayISO,
           score: null,
           tier: 'unmapped',
@@ -138,6 +205,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           computedAt: new Date().toISOString(),
           zendeskPenalty: penalty ? penalty.totalPenalty : null,
           zendeskDetails: penalty ? JSON.stringify(penalty) : null,
+          aliasStatus: null,
         });
         continue;
       }
@@ -151,8 +219,41 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           config.amplitudeFeatureEvents,
         );
 
+        // All signals zero — validate whether alias actually exists in Amplitude
+        if (isAllZeroSignals(signals)) {
+          const aliasExists = await validateAlias(
+            config.amplitudeApiKey,
+            config.amplitudeSecretKey,
+            amplitudeAlias,
+            config.amplitudeAccountProperty
+          );
+
+          if (!aliasExists) {
+            // Alias not found — treat as unmapped, not score=0
+            const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
+            await scoreStore.upsertScore({
+              accountId: company.accountId,
+              date: todayISO,
+              score: null,
+              tier: 'unmapped',
+              dauWauTrend: null,
+              monthlyActiveUsers: null,
+              licenseUtilization: null,
+              featuresUsed: null,
+              featureDetails: null,
+              scoreDelta: null,
+              computedAt: new Date().toISOString(),
+              zendeskPenalty: penalty ? penalty.totalPenalty : null,
+              zendeskDetails: penalty ? JSON.stringify(penalty) : null,
+              aliasStatus: 'not-found',
+            });
+            log(`Alias not found in Amplitude: ${amplitudeAlias} (${company.accountName})`);
+            continue;
+          }
+        }
+
         // Use stored licenses (manually entered) rather than HubSpot-synced data
-        const licenses = storedMap.get(company.hubspotId)?.licenses ?? null;
+        const licenses = storedMap.get(company.accountId)?.licenses ?? null;
         const baseResult = computeScore(signals, licenses);
 
         // Apply Zendesk penalty
@@ -170,7 +271,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         }
 
         // Calculate score delta vs yesterday
-        const yesterdayScore = yesterdayScores.get(company.hubspotId);
+        const yesterdayScore = yesterdayScores.get(company.accountId);
         let scoreDelta: number | null = null;
         if (
           yesterdayScore !== undefined &&
@@ -181,7 +282,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         }
 
         await scoreStore.upsertScore({
-          hubspotId: company.hubspotId,
+          accountId: company.accountId,
           date: todayISO,
           score: adjusted.score,
           tier: adjusted.tier,
@@ -194,18 +295,19 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           computedAt: new Date().toISOString(),
           zendeskPenalty: adjusted.zendeskPenalty,
           zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
+          aliasStatus: 'valid',
         });
 
         scored++;
       } catch (err: any) {
-        const msg = `Failed to score ${company.hubspotId} (${company.accountName}): ${err.message}`;
+        const msg = `Failed to score ${company.accountId} (${company.accountName}): ${err.message}`;
         log(msg);
         errors.push(msg);
         failed++;
 
         // Still write a null score so the account is represented
         await scoreStore.upsertScore({
-          hubspotId: company.hubspotId,
+          accountId: company.accountId,
           date: todayISO,
           score: null,
           tier: 'unmapped',
@@ -218,6 +320,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           computedAt: new Date().toISOString(),
           zendeskPenalty: null,
           zendeskDetails: null,
+          aliasStatus: 'valid',
         });
       }
     }

@@ -7,42 +7,50 @@ jest.mock('@azure/functions', () => ({
 }));
 
 jest.mock('../../clients/hubspotClient');
+jest.mock('../../clients/sqlClient');
 jest.mock('../../clients/amplitudeClient');
 jest.mock('../../clients/zendeskClient');
 jest.mock('../../services/accountStore');
 jest.mock('../../services/mappingStore');
 jest.mock('../../services/scoreStore');
+jest.mock('../../services/userStore');
 
 import { runSync } from '../../functions/SyncRunner';
 import { searchActiveCompanies } from '../../clients/hubspotClient';
-import { fetchSignals } from '../../clients/amplitudeClient';
-import { fetchZendeskTickets } from '../../clients/zendeskClient';
+import { fetchAccountsFromSql } from '../../clients/sqlClient';
+import { fetchSignals, validateAlias } from '../../clients/amplitudeClient';
+import { fetchAllZendeskTickets } from '../../clients/zendeskClient';
 import { AccountStore } from '../../services/accountStore';
 import { MappingStore } from '../../services/mappingStore';
 import { ScoreStore } from '../../services/scoreStore';
-import { HubspotAccount } from '../../types';
+import { UserStore } from '../../services/userStore';
+import { Account } from '../../types';
 import { AmplitudeSignals } from '../../clients/amplitudeClient';
 import { ZendeskTicketData } from '../../clients/zendeskClient';
 
 // Set required env vars so getConfig() does not throw
 beforeAll(() => {
   process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
+  process.env.DATA_SOURCE = 'hubspot';
   process.env.HUBSPOT_API_KEY = 'test-hubspot-key';
   process.env.AMPLITUDE_API_KEY = 'test-amplitude-key';
   process.env.AMPLITUDE_SECRET_KEY = 'test-amplitude-secret';
 });
 
 const mockSearchActiveCompanies = searchActiveCompanies as jest.MockedFunction<typeof searchActiveCompanies>;
+const mockFetchAccountsFromSql = fetchAccountsFromSql as jest.MockedFunction<typeof fetchAccountsFromSql>;
 const mockFetchSignals = fetchSignals as jest.MockedFunction<typeof fetchSignals>;
-const mockFetchZendeskTickets = fetchZendeskTickets as jest.MockedFunction<typeof fetchZendeskTickets>;
+const mockFetchAllZendeskTickets = fetchAllZendeskTickets as jest.MockedFunction<typeof fetchAllZendeskTickets>;
+const mockValidateAlias = jest.requireMock('../../clients/amplitudeClient').validateAlias as jest.Mock;
 
 const MockAccountStore = AccountStore as jest.MockedClass<typeof AccountStore>;
 const MockMappingStore = MappingStore as jest.MockedClass<typeof MappingStore>;
 const MockScoreStore = ScoreStore as jest.MockedClass<typeof ScoreStore>;
+const MockUserStore = UserStore as jest.MockedClass<typeof UserStore>;
 
 // HubSpot does not carry licenses — that is entered manually after sync
-const COMPANY_A: HubspotAccount = {
-  hubspotId: 'hs-001',
+const COMPANY_A: Account = {
+  accountId: 'hs-001',
   accountName: 'Alpha Corp',
   csmName: 'Jane Smith',
   csmEmail: 'jane@example.com',
@@ -54,8 +62,8 @@ const COMPANY_A: HubspotAccount = {
   domain: '',
 };
 
-const COMPANY_B: HubspotAccount = {
-  hubspotId: 'hs-002',
+const COMPANY_B: Account = {
+  accountId: 'hs-002',
   accountName: 'Beta Inc',
   csmName: 'John Doe',
   csmEmail: 'john@example.com',
@@ -76,9 +84,9 @@ const GOOD_SIGNALS: AmplitudeSignals = {
 };
 
 function setupStoreMocks(opts: {
-  mappings?: Array<{ hubspotId: string; amplitudeAlias: string }>;
+  mappings?: Array<{ accountId: string; amplitudeAlias: string }>;
   yesterdayScores?: Map<string, { score: number | null }>;
-  storedAccounts?: HubspotAccount[];
+  storedAccounts?: Account[];
 } = {}) {
   const upsertAccount = jest.fn().mockResolvedValue(undefined);
   const ensureTable = jest.fn().mockResolvedValue(undefined);
@@ -87,8 +95,8 @@ function setupStoreMocks(opts: {
   );
   const listMappings = jest.fn().mockResolvedValue(
     (opts.mappings ?? []).map(m => ({
-      hubspotId: m.hubspotId,
-      hubspotName: '',
+      accountId: m.accountId,
+      accountName: '',
       amplitudeAlias: m.amplitudeAlias,
       createdAt: '',
       updatedAt: '',
@@ -123,19 +131,31 @@ function setupStoreMocks(opts: {
     getScoreHistory: jest.fn(),
   } as any));
 
+  MockUserStore.mockImplementation(() => ({
+    ensureTable,
+    listUsers: jest.fn().mockResolvedValue([
+      { email: 'jane@example.com', displayName: 'Jane Smith', role: 'csm' },
+      { email: 'john@example.com', displayName: 'John Doe', role: 'csm' },
+    ]),
+    getUser: jest.fn(),
+    upsertUser: jest.fn(),
+    deleteUser: jest.fn(),
+  } as any));
+
   return { upsertAccount, upsertScore, ensureTable, listMappings, getAllScoresForDate };
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockValidateAlias.mockResolvedValue(true); // default: alias is valid
 });
 
 describe('runSync', () => {
   it('happy path: 2 companies both mapped both succeed → synced=2, scored=2, failed=0', async () => {
     const { upsertAccount, upsertScore } = setupStoreMocks({
       mappings: [
-        { hubspotId: 'hs-001', amplitudeAlias: 'alpha' },
-        { hubspotId: 'hs-002', amplitudeAlias: 'beta' },
+        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
+        { accountId: 'hs-002', amplitudeAlias: 'beta' },
       ],
     });
 
@@ -162,7 +182,7 @@ describe('runSync', () => {
   it('one company unmapped → synced=2, scored=1, failed=0, unmapped gets tier=unmapped', async () => {
     const { upsertScore } = setupStoreMocks({
       mappings: [
-        { hubspotId: 'hs-001', amplitudeAlias: 'alpha' },
+        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
         // hs-002 is NOT mapped
       ],
     });
@@ -179,7 +199,7 @@ describe('runSync', () => {
 
     // Find the upsertScore call for hs-002 (the unmapped one)
     const unmappedCall = upsertScore.mock.calls.find(
-      (call) => call[0].hubspotId === 'hs-002'
+      (call) => call[0].accountId === 'hs-002'
     );
     expect(unmappedCall).toBeDefined();
     expect(unmappedCall![0].tier).toBe('unmapped');
@@ -189,8 +209,8 @@ describe('runSync', () => {
   it('Amplitude fetch fails for one company → failed=1, error recorded, null score written', async () => {
     const { upsertScore } = setupStoreMocks({
       mappings: [
-        { hubspotId: 'hs-001', amplitudeAlias: 'alpha' },
-        { hubspotId: 'hs-002', amplitudeAlias: 'beta' },
+        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
+        { accountId: 'hs-002', amplitudeAlias: 'beta' },
       ],
     });
 
@@ -209,7 +229,7 @@ describe('runSync', () => {
 
     // The failed account still gets a null score written
     const failedCall = upsertScore.mock.calls.find(
-      (call) => call[0].hubspotId === 'hs-002' && call[0].score === null
+      (call) => call[0].accountId === 'hs-002' && call[0].score === null
     );
     expect(failedCall).toBeDefined();
     expect(failedCall![0].tier).toBe('unmapped');
@@ -232,11 +252,11 @@ describe('runSync', () => {
     const yesterdayISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
     const yesterdayScoreMap = new Map<string, any>([
-      ['hs-001', { hubspotId: 'hs-001', date: yesterdayISO, score: 70, tier: 'watch' }],
+      ['hs-001', { accountId: 'hs-001', date: yesterdayISO, score: 70, tier: 'watch' }],
     ]);
 
     const { upsertScore } = setupStoreMocks({
-      mappings: [{ hubspotId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
       yesterdayScores: yesterdayScoreMap,
       storedAccounts: [{ ...COMPANY_A, licenses: null }],
     });
@@ -256,10 +276,10 @@ describe('runSync', () => {
 
   it('uses stored licenses from accountStore (not HubSpot data) for scoring', async () => {
     // HubSpot returns licenses=null, but stored account has licenses=100
-    const storedA: HubspotAccount = { ...COMPANY_A, licenses: 100 };
+    const storedA: Account = { ...COMPANY_A, licenses: 100 };
 
     const { upsertScore } = setupStoreMocks({
-      mappings: [{ hubspotId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
       storedAccounts: [storedA],
     });
 
@@ -297,21 +317,22 @@ describe('runSync', () => {
 
   it('sync with Zendesk enabled applies penalties', async () => {
     enableZendeskConfig();
-    const companyWithDomain: HubspotAccount = { ...COMPANY_A, domain: 'alpha.com' };
+    const companyWithDomain: Account = { ...COMPANY_A, domain: 'alpha.com' };
 
     const { upsertScore } = setupStoreMocks({
-      mappings: [{ hubspotId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
       storedAccounts: [companyWithDomain],
     });
 
     mockSearchActiveCompanies.mockResolvedValue([companyWithDomain]);
     mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
-    mockFetchZendeskTickets.mockResolvedValue(ZENDESK_TICKET_DATA);
+    mockFetchAllZendeskTickets.mockResolvedValue(
+      new Map([['alpha.com', ZENDESK_TICKET_DATA]])
+    );
 
     const result = await runSync();
 
     expect(result.zendeskFetched).toBe(1);
-    expect(mockFetchZendeskTickets).toHaveBeenCalledWith('test-sub', 'agent@test.com', 'zd-token-123', 'alpha.com');
 
     const scoreCall = upsertScore.mock.calls[0][0];
     // Volume 7 → -5, Open 3 → -4, High 1 → -2 = total -11
@@ -329,7 +350,7 @@ describe('runSync', () => {
     disableZendeskConfig();
 
     setupStoreMocks({
-      mappings: [{ hubspotId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
@@ -338,12 +359,12 @@ describe('runSync', () => {
     const result = await runSync();
 
     expect(result.zendeskFetched).toBe(0);
-    expect(mockFetchZendeskTickets).not.toHaveBeenCalled();
+    expect(mockFetchAllZendeskTickets).not.toHaveBeenCalled();
   });
 
   it('unmapped account with domain still gets zendeskPenalty', async () => {
     enableZendeskConfig();
-    const companyWithDomain: HubspotAccount = { ...COMPANY_A, domain: 'alpha.com' };
+    const companyWithDomain: Account = { ...COMPANY_A, domain: 'alpha.com' };
 
     const { upsertScore } = setupStoreMocks({
       mappings: [], // no Amplitude mapping
@@ -351,7 +372,9 @@ describe('runSync', () => {
     });
 
     mockSearchActiveCompanies.mockResolvedValue([companyWithDomain]);
-    mockFetchZendeskTickets.mockResolvedValue(ZENDESK_TICKET_DATA);
+    mockFetchAllZendeskTickets.mockResolvedValue(
+      new Map([['alpha.com', ZENDESK_TICKET_DATA]])
+    );
 
     const result = await runSync();
 
@@ -368,29 +391,220 @@ describe('runSync', () => {
     disableZendeskConfig();
   });
 
-  it('Zendesk auth failure (401) on first domain skips remaining domains', async () => {
+  it('Zendesk auth failure returns null → zendeskFetched=0', async () => {
     enableZendeskConfig();
-    const companyA: HubspotAccount = { ...COMPANY_A, domain: 'alpha.com' };
-    const companyB: HubspotAccount = { ...COMPANY_B, domain: 'beta.com' };
+    const companyA: Account = { ...COMPANY_A, domain: 'alpha.com' };
 
     setupStoreMocks({
-      mappings: [
-        { hubspotId: 'hs-001', amplitudeAlias: 'alpha' },
-        { hubspotId: 'hs-002', amplitudeAlias: 'beta' },
-      ],
-      storedAccounts: [companyA, companyB],
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      storedAccounts: [companyA],
     });
 
-    mockSearchActiveCompanies.mockResolvedValue([companyA, companyB]);
+    mockSearchActiveCompanies.mockResolvedValue([companyA]);
     mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
-    // First call returns null (auth failure) — remaining should be skipped
-    mockFetchZendeskTickets.mockResolvedValueOnce(null);
+    mockFetchAllZendeskTickets.mockResolvedValue(null);
 
     const result = await runSync();
 
-    expect(mockFetchZendeskTickets).toHaveBeenCalledTimes(1);
     expect(result.zendeskFetched).toBe(0);
 
     disableZendeskConfig();
+  });
+
+  // ── SQL data source tests ──────────────────────────────────────────────
+
+  function enableSqlConfig() {
+    process.env.DATA_SOURCE = 'sql';
+    process.env.SQL_SERVER_DETAILS = 'Server=tcp:test.database.windows.net,1433;Database=TestDB';
+    process.env.SQL_LOGIN = 'testuser';
+    process.env.SQL_PASSWORD = 'testpass';
+  }
+
+  function disableSqlConfig() {
+    process.env.DATA_SOURCE = 'hubspot';
+    delete process.env.SQL_SERVER_DETAILS;
+    delete process.env.SQL_LOGIN;
+    delete process.env.SQL_PASSWORD;
+  }
+
+  it('SQL data source: fetches from SQL instead of HubSpot', async () => {
+    enableSqlConfig();
+    const { upsertAccount, upsertScore } = setupStoreMocks({
+      mappings: [
+        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
+      ],
+    });
+
+    mockFetchAccountsFromSql.mockResolvedValue({
+      accounts: [COMPANY_A],
+      aliases: new Map(),
+      licences: new Map(),
+    });
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+
+    const result = await runSync();
+
+    expect(result.synced).toBe(1);
+    expect(result.scored).toBe(1);
+    expect(mockFetchAccountsFromSql).toHaveBeenCalledTimes(1);
+    expect(mockSearchActiveCompanies).not.toHaveBeenCalled();
+    expect(upsertAccount).toHaveBeenCalledTimes(1);
+
+    disableSqlConfig();
+  });
+
+  it('SQL data source: auto-syncs aliases only for accounts without existing mappings', async () => {
+    enableSqlConfig();
+    const mocks = setupStoreMocks({
+      mappings: [
+        { accountId: 'hs-001', amplitudeAlias: 'old-alias' }, // existing — preserved even if SQL differs
+      ],
+      // hs-002 has no mapping — SQL alias will be created
+    });
+
+    mockFetchAccountsFromSql.mockResolvedValue({
+      accounts: [COMPANY_A, COMPANY_B],
+      aliases: new Map([
+        ['hs-001', 'new-alias'],  // SQL differs but existing mapping preserved
+        ['hs-002', 'beta'],       // no existing mapping — will be created
+      ]),
+      licences: new Map(),
+    });
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+
+    await runSync();
+
+    // upsertMapping called once for hs-002 (new), NOT for hs-001 (existing preserved)
+    const mappingStoreInstance = MockMappingStore.mock.results[0].value;
+    const upsertMappingCalls = mappingStoreInstance.upsertMapping.mock.calls;
+    expect(upsertMappingCalls.length).toBe(1);
+    expect(upsertMappingCalls[0][0]).toBe('hs-002');
+    expect(upsertMappingCalls[0][2]).toBe('beta');
+
+    disableSqlConfig();
+  });
+
+  it('SQL data source: preserves manual mappings when SQL has no alias', async () => {
+    enableSqlConfig();
+    setupStoreMocks({
+      mappings: [
+        { accountId: 'hs-001', amplitudeAlias: 'manual-alias' },
+      ],
+    });
+
+    mockFetchAccountsFromSql.mockResolvedValue({
+      accounts: [COMPANY_A],
+      aliases: new Map(), // SQL has no alias for hs-001
+      licences: new Map(),
+    });
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+
+    await runSync();
+
+    // upsertMapping should NOT be called — manual mapping preserved
+    const mappingStoreInstance = MockMappingStore.mock.results[0].value;
+    expect(mappingStoreInstance.upsertMapping).not.toHaveBeenCalled();
+
+    disableSqlConfig();
+  });
+
+  it('SQL data source: auto-syncs licences when no manual override exists', async () => {
+    enableSqlConfig();
+    const storedA: Account = { ...COMPANY_A, licenses: null }; // no manual override
+    const storedB: Account = { ...COMPANY_B, licenses: 50 };   // manual override exists
+
+    setupStoreMocks({
+      mappings: [
+        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
+        { accountId: 'hs-002', amplitudeAlias: 'beta' },
+      ],
+      storedAccounts: [storedA, storedB],
+    });
+
+    mockFetchAccountsFromSql.mockResolvedValue({
+      accounts: [COMPANY_A, COMPANY_B],
+      aliases: new Map(),
+      licences: new Map([
+        ['hs-001', 100],
+        ['hs-002', 200],
+      ]),
+    });
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+
+    await runSync();
+
+    // updateLicenses should only be called for hs-001 (no manual override)
+    const accountStoreInstance = MockAccountStore.mock.results[0].value;
+    const updateCalls = accountStoreInstance.updateLicenses.mock.calls;
+    expect(updateCalls.length).toBe(1);
+    expect(updateCalls[0][0]).toBe('hs-001');
+    expect(updateCalls[0][1]).toBe(100);
+
+    disableSqlConfig();
+  });
+
+  it('SQL fetch fails completely → returns error', async () => {
+    enableSqlConfig();
+    setupStoreMocks();
+    mockFetchAccountsFromSql.mockRejectedValue(new Error('SQL connection timeout'));
+
+    const result = await runSync();
+
+    expect(result.synced).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('SQL connection timeout');
+
+    disableSqlConfig();
+  });
+
+  // ── Alias validation tests ──────────────────────────────────────────────
+
+  it('all-zero signals with invalid alias → aliasStatus not-found, score null', async () => {
+    const { upsertScore } = setupStoreMocks({
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'bad-alias' }],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
+    mockFetchSignals.mockResolvedValue({
+      dauWauTrend: null,
+      monthlyActiveUsers: 0,
+      featureBreadth: { used: [], total: 12 },
+    });
+    mockValidateAlias.mockResolvedValue(false);
+    mockFetchAllZendeskTickets.mockResolvedValue(null);
+
+    const result = await runSync();
+    expect(result.synced).toBe(1);
+    expect(upsertScore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        score: null,
+        tier: 'unmapped',
+        aliasStatus: 'not-found',
+      })
+    );
+  });
+
+  it('all-zero signals with valid alias → score 0, aliasStatus valid', async () => {
+    const { upsertScore } = setupStoreMocks({
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'real-alias' }],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
+    mockFetchSignals.mockResolvedValue({
+      dauWauTrend: null,
+      monthlyActiveUsers: 0,
+      featureBreadth: { used: [], total: 12 },
+    });
+    mockValidateAlias.mockResolvedValue(true);
+    mockFetchAllZendeskTickets.mockResolvedValue(null);
+
+    const result = await runSync();
+    expect(upsertScore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        score: 0,
+        tier: 'critical',
+        aliasStatus: 'valid',
+      })
+    );
   });
 });
