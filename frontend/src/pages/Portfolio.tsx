@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses, updateAccountArr, upsertMapping, deleteMapping } from '../services/api';
 import { AccountSummary, AccountDetail, HealthTier, ChurnScore } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -112,7 +114,7 @@ function sortRows(rows: AccountSummary[], col: SortCol, dir: 'asc' | 'desc'): Ac
   const m = dir === 'asc' ? 1 : -1;
   return [...rows].sort((a, b) => {
     switch (col) {
-      case 'accountName':    return m * a.accountName.localeCompare(b.accountName);
+      case 'accountName':    return m * (a.accountName ?? '').localeCompare(b.accountName ?? '');
       case 'csmName':        return m * (a.csmName ?? '').localeCompare(b.csmName ?? '');
       case 'tier':           return m * ((TIER_ORDER[a.tier ?? 'unmapped'] ?? 0) - (TIER_ORDER[b.tier ?? 'unmapped'] ?? 0));
       case 'score':          return m * ((a.score ?? -1) - (b.score ?? -1));
@@ -246,11 +248,11 @@ function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: (
   useEffect(() => {
     setDetail(null);
     setLoading(true);
-    getAccountDetail(summary.hubspotId)
+    getAccountDetail(summary.accountId)
       .then(setDetail)
       .catch(console.warn)
       .finally(() => setLoading(false));
-  }, [summary.hubspotId]);
+  }, [summary.accountId]);
 
   const tier    = summary.tier ?? 'unmapped';
   const tierCfg = TIER_CFG[tier];
@@ -343,6 +345,14 @@ function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: (
                   <p className="text-[14px] font-semibold text-tier-watch">No Amplitude mapping</p>
                   <p className="text-[14px] text-tier-watch/70 mt-1 leading-relaxed">
                     This account can't be scored until an Amplitude alias is set in the grid.
+                  </p>
+                </div>
+              ) : summary.aliasStatus === 'not-found' ? (
+                <div className="rounded-xl bg-tier-watch-bg border border-tier-watch/20 px-4 py-4">
+                  <p className="text-[14px] font-semibold text-tier-watch">Alias not recognized by Amplitude</p>
+                  <p className="text-[14px] text-tier-watch/70 mt-1 leading-relaxed">
+                    The alias <span className="font-mono">"{summary.amplitudeAlias}"</span> was not found in Amplitude.
+                    Check the casing matches exactly, or wait for first activity if this is a new account.
                   </p>
                 </div>
               ) : loading ? (
@@ -490,7 +500,7 @@ function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: (
                   { label: 'ARR',        value: formatArr(summary.arr) },
                   { label: 'Renewal',    value: renewal.label, color: RENEWAL_COLOURS[renewal.urgency] },
                   { label: 'Owner',      value: summary.csmName || '—' },
-                  { label: 'HubSpot ID', value: summary.hubspotId, mono: true },
+                  { label: 'HubSpot ID', value: summary.accountId, mono: true },
                 ].map(({ label, value, color, mono }) => (
                   <div key={label} className="flex items-center justify-between px-4 py-2.5 text-[14px]">
                     <dt className="text-obs-ghost">{label}</dt>
@@ -522,6 +532,10 @@ function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: (
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Portfolio() {
+  const { user } = useAuth();
+  const isCSM = user?.role === 'csm';
+  const isAdmin = user?.role === 'admin';
+
   const [accounts, setAccounts]           = useState<AccountSummary[]>([]);
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState<string | null>(null);
@@ -585,7 +599,7 @@ export default function Portfolio() {
     }
   }
 
-  async function saveLicenses(hubspotId: string) {
+  async function saveLicenses(accountId: string) {
     const raw = licensesInput.trim();
     const value = raw === '' ? null : Number(raw);
     if (raw !== '' && (isNaN(value as number) || (value as number) < 0)) {
@@ -593,9 +607,9 @@ export default function Portfolio() {
       return;
     }
     try {
-      await updateAccountLicenses(hubspotId, value);
+      await updateAccountLicenses(accountId, value);
       setAccounts(prev => prev.map(a =>
-        a.hubspotId === hubspotId ? { ...a, licenses: value } : a
+        a.accountId === accountId ? { ...a, licenses: value } : a
       ));
     } catch (err) {
       console.warn('Failed to save licenses:', err);
@@ -603,13 +617,13 @@ export default function Portfolio() {
     setEditingLicenses(null);
   }
 
-  async function saveArr(hubspotId: string) {
+  async function saveArr(accountId: string) {
     const raw = arrInput.trim();
     const value = raw === '' ? 0 : Number(raw);
     if (isNaN(value) || value < 0) { setEditingArr(null); return; }
     try {
-      await updateAccountArr(hubspotId, value);
-      setAccounts(prev => prev.map(a => a.hubspotId === hubspotId ? { ...a, arr: value } : a));
+      await updateAccountArr(accountId, value);
+      setAccounts(prev => prev.map(a => a.accountId === accountId ? { ...a, arr: value } : a));
     } catch (err) { console.warn('Failed to save ARR:', err); }
     setEditingArr(null);
   }
@@ -618,15 +632,15 @@ export default function Portfolio() {
     const alias = aliasInput.trim();
     try {
       if (alias) {
-        await upsertMapping(account.hubspotId, account.accountName, alias);
+        await upsertMapping(account.accountId, account.accountName, alias);
         setAccounts(prev => prev.map(a =>
-          a.hubspotId === account.hubspotId ? { ...a, amplitudeAlias: alias } : a
+          a.accountId === account.accountId ? { ...a, amplitudeAlias: alias } : a
         ));
       } else if (account.amplitudeAlias) {
         // Clear alias = delete mapping
-        await deleteMapping(account.hubspotId);
+        await deleteMapping(account.accountId);
         setAccounts(prev => prev.map(a =>
-          a.hubspotId === account.hubspotId ? { ...a, amplitudeAlias: null } : a
+          a.accountId === account.accountId ? { ...a, amplitudeAlias: null } : a
         ));
       }
     } catch (err) {
@@ -652,7 +666,7 @@ export default function Portfolio() {
     const q = search.toLowerCase();
     return sortRows(
       accounts.filter(a => {
-        if (q && !a.accountName.toLowerCase().includes(q)
+        if (q && !(a.accountName ?? '').toLowerCase().includes(q)
             && !(a.csmName ?? '').toLowerCase().includes(q)
             && !(a.amplitudeAlias ?? '').toLowerCase().includes(q)) return false;
         if (filterTier !== 'all' && (a.tier ?? 'unmapped') !== filterTier) return false;
@@ -714,6 +728,31 @@ export default function Portfolio() {
               {unmappedCount} unmapped
             </span>
           )}
+
+          {/* User info + role badge */}
+          {user && (
+            <span className="flex items-center gap-2 text-[14px]">
+              <span className="text-obs-text">{user.displayName}</span>
+              <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium uppercase tracking-wider border ${
+                user.role === 'admin' ? 'bg-obs-accent/20 text-obs-accent border-obs-accent/30' :
+                user.role === 'supervisor' ? 'bg-tier-watch-bg text-tier-watch border-tier-watch/30' :
+                'bg-tier-healthy-bg text-tier-healthy border-tier-healthy/30'
+              }`}>
+                {user.role}
+              </span>
+            </span>
+          )}
+
+          {isAdmin && (
+            <Link to="/admin" className="text-[14px] text-obs-accent hover:text-obs-glow transition-colors">
+              Admin
+            </Link>
+          )}
+
+          <a href="/.auth/logout" className="text-[14px] text-obs-dim hover:text-obs-text transition-colors">
+            Logout
+          </a>
+
           <button
             onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-obs-ghost hover:text-obs-bright hover:bg-obs-elevated transition-colors"
@@ -729,13 +768,15 @@ export default function Portfolio() {
               </svg>
             )}
           </button>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center gap-2 px-4 py-1.5 bg-obs-accent hover:bg-obs-glow disabled:opacity-50 text-white text-[14px] font-medium rounded-lg transition-all shadow-glow-sm hover:shadow-glow"
-          >
-            {syncing ? <><Spinner className="h-4 w-4" /> Syncing...</> : 'Sync Now'}
-          </button>
+          {!isCSM && (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center gap-2 px-4 py-1.5 bg-obs-accent hover:bg-obs-glow disabled:opacity-50 text-white text-[14px] font-medium rounded-lg transition-all shadow-glow-sm hover:shadow-glow"
+            >
+              {syncing ? <><Spinner className="h-4 w-4" /> Syncing...</> : 'Sync Now'}
+            </button>
+          )}
         </nav>
       </header>
 
@@ -793,7 +834,7 @@ export default function Portfolio() {
                   const cfg = TIER_CFG[a.tier ?? 'unmapped'];
                   return (
                     <div
-                      key={a.hubspotId}
+                      key={a.accountId}
                       onClick={() => setSelected(a)}
                       className="bg-obs-raised border border-obs-edge rounded-xl px-4 py-3 cursor-pointer hover:border-obs-rule transition-colors group"
                     >
@@ -834,15 +875,17 @@ export default function Portfolio() {
               />
             </div>
 
-            {/* Owner filter */}
-            <select
-              value={filterOwner}
-              onChange={e => setFilterOwner(e.target.value)}
-              className="text-[14px] bg-obs-card border border-obs-edge rounded-lg px-3 py-2 text-obs-text focus:outline-none focus:ring-1 focus:ring-obs-accent focus:border-obs-accent"
-            >
-              <option value="all">All owners</option>
-              {uniqueOwners.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+            {/* Owner filter (hidden for CSMs) */}
+            {!isCSM && (
+              <select
+                value={filterOwner}
+                onChange={e => setFilterOwner(e.target.value)}
+                className="text-[14px] bg-obs-card border border-obs-edge rounded-lg px-3 py-2 text-obs-text focus:outline-none focus:ring-1 focus:ring-obs-accent focus:border-obs-accent"
+              >
+                <option value="all">All owners</option>
+                {uniqueOwners.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            )}
 
             {/* Tier filter */}
             <select
@@ -901,13 +944,15 @@ export default function Portfolio() {
             </div>
             <p className="text-[16px] font-semibold text-obs-bright mb-1">No accounts yet</p>
             <p className="text-[14px] text-obs-dim mb-6">Run a sync to pull active clients from HubSpot.</p>
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="px-5 py-2 bg-obs-accent hover:bg-obs-glow disabled:opacity-50 text-white text-[14px] font-medium rounded-lg transition-all shadow-glow-sm hover:shadow-glow"
-            >
-              {syncing ? 'Syncing...' : 'Sync Now'}
-            </button>
+            {!isCSM && (
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="px-5 py-2 bg-obs-accent hover:bg-obs-glow disabled:opacity-50 text-white text-[14px] font-medium rounded-lg transition-all shadow-glow-sm hover:shadow-glow"
+              >
+                {syncing ? 'Syncing...' : 'Sync Now'}
+              </button>
+            )}
           </div>
         )}
 
@@ -942,11 +987,11 @@ export default function Portfolio() {
                   <tbody>
                     {filtered.map(account => {
                       const r = renewalInfo(account.renewalDate);
-                      const isActive = selected?.hubspotId === account.hubspotId;
+                      const isActive = selected?.accountId === account.accountId;
                       const tierColor = TIER_CFG[account.tier ?? 'unmapped'].color;
                       return (
                         <tr
-                          key={account.hubspotId}
+                          key={account.accountId}
                           onClick={() => setSelected(isActive ? null : account)}
                           className={`cursor-pointer transition-colors border-b border-obs-edge/50 ${
                             isActive ? 'bg-obs-accent/8' : 'row-hover'
@@ -986,16 +1031,17 @@ export default function Portfolio() {
                             )}
                           </td>
 
-                          {/* Amplitude Alias (inline editable) */}
+                          {/* Amplitude Alias (inline editable, read-only for CSMs) */}
                           <td
                             className="px-4 py-3"
                             onClick={e => {
+                              if (isCSM) return;
                               e.stopPropagation();
-                              setEditingAlias(account.hubspotId);
+                              setEditingAlias(account.accountId);
                               setAliasInput(account.amplitudeAlias ?? '');
                             }}
                           >
-                            {editingAlias === account.hubspotId ? (
+                            {editingAlias === account.accountId ? (
                               <input
                                 type="text"
                                 autoFocus
@@ -1010,35 +1056,44 @@ export default function Portfolio() {
                                 className="w-32 text-[14px] font-mono px-2 py-0.5 bg-obs-card border border-obs-accent rounded focus:outline-none text-obs-bright placeholder-obs-ghost"
                               />
                             ) : (
-                              <span className={`text-[14px] font-mono ${
-                                account.amplitudeAlias
-                                  ? 'text-obs-text hover:text-obs-accent'
-                                  : 'text-tier-watch italic'
-                              } transition-colors`}>
+                              <span
+                                className={`text-[14px] font-mono ${
+                                  account.amplitudeAlias
+                                    ? account.aliasStatus === 'not-found'
+                                      ? 'text-tier-watch'
+                                      : 'text-obs-text hover:text-obs-accent'
+                                    : 'text-tier-watch italic'
+                                } transition-colors`}
+                                title={account.aliasStatus === 'not-found' ? 'Alias not found in Amplitude \u2014 check casing or wait for first activity' : undefined}
+                              >
                                 {account.amplitudeAlias || 'Set alias'}
+                                {account.aliasStatus === 'not-found' && (
+                                  <span className="ml-1 text-[11px]" title="Alias not found in Amplitude">{'\u26A0'}</span>
+                                )}
                               </span>
                             )}
                           </td>
 
-                          {/* Licences (inline editable) */}
+                          {/* Licences (inline editable, read-only for CSMs) */}
                           <td
                             className="px-4 py-3"
                             onClick={e => {
+                              if (isCSM) return;
                               e.stopPropagation();
-                              setEditingLicenses(account.hubspotId);
+                              setEditingLicenses(account.accountId);
                               setLicensesInput(account.licenses !== null ? String(account.licenses) : '');
                             }}
                           >
-                            {editingLicenses === account.hubspotId ? (
+                            {editingLicenses === account.accountId ? (
                               <input
                                 type="number"
                                 min="0"
                                 autoFocus
                                 value={licensesInput}
                                 onChange={e => setLicensesInput(e.target.value)}
-                                onBlur={() => saveLicenses(account.hubspotId)}
+                                onBlur={() => saveLicenses(account.accountId)}
                                 onKeyDown={e => {
-                                  if (e.key === 'Enter') saveLicenses(account.hubspotId);
+                                  if (e.key === 'Enter') saveLicenses(account.accountId);
                                   if (e.key === 'Escape') setEditingLicenses(null);
                                 }}
                                 className="w-16 text-[14px] font-mono px-2 py-0.5 bg-obs-card border border-obs-accent rounded focus:outline-none text-obs-bright"
@@ -1052,23 +1107,24 @@ export default function Portfolio() {
                             )}
                           </td>
 
-                          {/* ARR (inline editable) */}
+                          {/* ARR (inline editable, read-only for CSMs) */}
                           <td
                             className="px-4 py-3 text-[14px] font-mono text-obs-bright text-right"
                             onClick={e => {
+                              if (isCSM) return;
                               e.stopPropagation();
-                              setEditingArr(account.hubspotId);
+                              setEditingArr(account.accountId);
                               setArrInput(String(account.arr || ''));
                             }}
                           >
-                            {editingArr === account.hubspotId ? (
+                            {editingArr === account.accountId ? (
                               <input
                                 autoFocus
                                 className="w-20 bg-obs-elevated border border-obs-accent rounded px-2 py-0.5 text-[14px] font-mono text-obs-bright text-right outline-none"
                                 value={arrInput}
                                 onChange={e => setArrInput(e.target.value)}
-                                onBlur={() => saveArr(account.hubspotId)}
-                                onKeyDown={e => { if (e.key === 'Enter') saveArr(account.hubspotId); if (e.key === 'Escape') setEditingArr(null); }}
+                                onBlur={() => saveArr(account.accountId)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveArr(account.accountId); if (e.key === 'Escape') setEditingArr(null); }}
                               />
                             ) : (
                               <span
