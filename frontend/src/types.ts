@@ -1,5 +1,5 @@
-export interface HubspotAccount {
-  hubspotId: string;
+export interface Account {
+  accountId: string;
   accountName: string;
   csmName: string;
   csmEmail: string;
@@ -11,11 +11,12 @@ export interface HubspotAccount {
   domain: string;
 }
 
-export interface AccountSummary extends HubspotAccount {
+export interface AccountSummary extends Account {
   score: number | null;
   tier: HealthTier | 'unmapped' | null;
   scoreDelta: number | null;
   amplitudeAlias: string | null;
+  aliasStatus: 'valid' | 'not-found' | null;
 }
 
 export interface ZendeskDetails {
@@ -45,15 +46,15 @@ export interface AccountDetail extends AccountSummary {
 }
 
 export interface AmplitudeMapping {
-  hubspotId: string;
-  hubspotName: string;
+  accountId: string;
+  accountName: string;
   amplitudeAlias: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ChurnScore {
-  hubspotId: string;
+  accountId: string;
   date: string;
   score: number | null;
   tier: HealthTier | 'unmapped';
@@ -66,6 +67,17 @@ export interface ChurnScore {
   computedAt: string;
   zendeskPenalty: number | null;
   zendeskDetails: string | null;
+  aliasStatus: 'valid' | 'not-found' | null;
 }
 
 export type HealthTier = 'healthy' | 'watch' | 'at-risk' | 'critical';
+
+export type UserRole = 'admin' | 'supervisor' | 'csm';
+
+export interface User {
+  email: string;
+  displayName: string;
+  role: UserRole;
+  createdAt?: string;
+  updatedAt?: string;
+}
