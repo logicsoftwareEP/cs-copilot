@@ -4,11 +4,12 @@ import { AccountStore } from '../services/accountStore';
 import { ScoreStore } from '../services/scoreStore';
 import { MappingStore } from '../services/mappingStore';
 import { AccountSummary } from '../types';
+import { authenticateRequest, requireRole, AuthError } from '../auth';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, PATCH, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-User-Email',
 };
 
 function makeStores() {
@@ -31,6 +32,8 @@ async function listAccounts(
   if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
 
   try {
+    const user = await authenticateRequest(req);
+
     const { accounts, scores, mappings } = makeStores();
     await Promise.all([accounts.ensureTable(), scores.ensureTable(), mappings.ensureTable()]);
 
@@ -40,11 +43,11 @@ async function listAccounts(
       mappings.listMappings(),
     ]);
 
-    const mappingLookup = new Map(allMappings.map(m => [m.hubspotId, m.amplitudeAlias]));
+    const mappingLookup = new Map(allMappings.map(m => [m.accountId, m.amplitudeAlias]));
 
     const missingIds = allAccounts
-      .filter(a => !todayScores.has(a.hubspotId))
-      .map(a => a.hubspotId);
+      .filter(a => !todayScores.has(a.accountId))
+      .map(a => a.accountId);
 
     const fallbackScores = new Map(
       await Promise.all(
@@ -55,16 +58,25 @@ async function listAccounts(
       )
     );
 
-    const summary: AccountSummary[] = allAccounts.map(account => {
-      const scoreRow = todayScores.get(account.hubspotId) ?? fallbackScores.get(account.hubspotId) ?? null;
+    let summary: AccountSummary[] = allAccounts.map(account => {
+      const scoreRow = todayScores.get(account.accountId) ?? fallbackScores.get(account.accountId) ?? null;
       return {
         ...account,
         score: scoreRow?.score ?? null,
         tier: scoreRow?.tier ?? null,
         scoreDelta: scoreRow?.scoreDelta ?? null,
-        amplitudeAlias: mappingLookup.get(account.hubspotId) ?? null,
+        amplitudeAlias: mappingLookup.get(account.accountId) ?? null,
+        aliasStatus: scoreRow?.aliasStatus ?? null,
       };
     });
+
+    // CSM filtering: only show accounts owned by this CSM (matched by email)
+    if (user.role === 'csm') {
+      const email = user.email.toLowerCase();
+      summary = summary.filter(a =>
+        (a.csmEmail ?? '').toLowerCase() === email
+      );
+    }
 
     return {
       status: 200,
@@ -72,6 +84,7 @@ async function listAccounts(
       body: JSON.stringify(summary),
     };
   } catch (err: any) {
+    if (err instanceof AuthError) return { status: err.status, headers: CORS_HEADERS, body: err.message };
     context.error('listAccounts failed:', err);
     return { status: 500, headers: CORS_HEADERS, body: `Internal error: ${err.message}` };
   }
@@ -81,13 +94,17 @@ async function getAccount(
   req: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
-  const hubspotId = req.params.id;
-
   if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
 
-  // ── PATCH: update licence count and/or ARR ────────────────────────────────
-  if (req.method === 'PATCH') {
-    try {
+  const accountId = req.params.id;
+
+  try {
+    const user = await authenticateRequest(req);
+
+    // ── PATCH: update licence count and/or ARR ────────────────────────────────
+    if (req.method === 'PATCH') {
+      requireRole(user, 'admin', 'supervisor');
+
       const body = await req.json() as { licenses?: number | null; arr?: number };
       const { accounts } = makeStores();
       await accounts.ensureTable();
@@ -97,39 +114,39 @@ async function getAccount(
         if (licenses !== null && (typeof licenses !== 'number' || licenses < 0)) {
           return { status: 400, headers: CORS_HEADERS, body: 'licenses must be a non-negative number or null.' };
         }
-        await accounts.updateLicenses(hubspotId, licenses);
+        await accounts.updateLicenses(accountId, licenses);
       }
 
       if (body.arr !== undefined) {
         const arr = typeof body.arr === 'number' ? body.arr : Number(body.arr);
         if (!isNaN(arr) && arr >= 0) {
-          await accounts.updateArr(hubspotId, arr);
+          await accounts.updateArr(accountId, arr);
         }
       }
 
       return { status: 204, headers: CORS_HEADERS };
-    } catch (err: any) {
-      context.error('PATCH account failed:', err);
-      return { status: 500, headers: CORS_HEADERS, body: `Internal error: ${err.message}` };
     }
-  }
 
-  // ── GET: account detail with score breakdown ───────────────────────────────
-  try {
+    // ── GET: account detail with score breakdown ───────────────────────────────
     const { accounts, scores, mappings } = makeStores();
 
     const [account, mapping] = await Promise.all([
-      accounts.getById(hubspotId),
-      mappings.getMapping(hubspotId),
+      accounts.getById(accountId),
+      mappings.getMapping(accountId),
     ]);
 
     if (!account) {
       return { status: 404, headers: CORS_HEADERS, body: 'Account not found.' };
     }
 
+    // CSM filtering: can only view own accounts (matched by email)
+    if (user.role === 'csm' && (account.csmEmail ?? '').toLowerCase() !== user.email.toLowerCase()) {
+      return { status: 403, headers: CORS_HEADERS, body: 'Access denied.' };
+    }
+
     const [latestScore, history] = await Promise.all([
-      scores.getLatestScoreForAccount(hubspotId),
-      scores.getScoreHistory(hubspotId, 7),
+      scores.getLatestScoreForAccount(accountId),
+      scores.getScoreHistory(accountId, 7),
     ]);
 
     return {
@@ -140,6 +157,7 @@ async function getAccount(
         score: latestScore?.score ?? null,
         tier: latestScore?.tier ?? null,
         scoreDelta: latestScore?.scoreDelta ?? null,
+        aliasStatus: latestScore?.aliasStatus ?? null,
         amplitudeAlias: mapping?.amplitudeAlias ?? null,
         scoreBreakdown: latestScore
           ? {
@@ -156,6 +174,7 @@ async function getAccount(
       }),
     };
   } catch (err: any) {
+    if (err instanceof AuthError) return { status: err.status, headers: CORS_HEADERS, body: err.message };
     context.error('getAccount failed:', err);
     return { status: 500, headers: CORS_HEADERS, body: `Internal error: ${err.message}` };
   }
@@ -168,7 +187,7 @@ app.http('ListAccounts', {
   handler: listAccounts,
 });
 
-// Single handler for GET + PATCH + OPTIONS on accounts/{id}
+// Single handler for GET + PATCH on accounts/{id}
 app.http('GetAccount', {
   methods: ['GET', 'PATCH', 'OPTIONS'],
   authLevel: 'function',
