@@ -1,5 +1,5 @@
 import { TableClient, odata } from '@azure/data-tables';
-import { HubspotAccount } from '../types';
+import { Account } from '../types';
 
 interface AccountEntity {
   partitionKey: string;
@@ -13,19 +13,20 @@ interface AccountEntity {
   syncedAt: string;
   licenses?: number | null;
   domain?: string;
+  hidden?: boolean;
 }
 
 /**
- * Map a HubspotAccount to a Table Storage entity for sync writes.
+ * Map an Account to a Table Storage entity for sync writes.
  * NOTE: `licenses` is intentionally excluded so that Merge mode
  * preserves any manually-entered value already in the table.
  * `domain` is only written when non-empty to avoid overwriting a
  * manually-corrected value with a blank string.
  */
-function toEntity(account: HubspotAccount): Omit<AccountEntity, 'licenses'> {
+function toEntity(account: Account): Omit<AccountEntity, 'licenses'> {
   const entity: Record<string, unknown> = {
     partitionKey: 'accounts',
-    rowKey: account.hubspotId,
+    rowKey: account.accountId,
     accountName: account.accountName,
     csmName: account.csmName,
     csmEmail: account.csmEmail,
@@ -33,16 +34,16 @@ function toEntity(account: HubspotAccount): Omit<AccountEntity, 'licenses'> {
     hubspotUrl: account.hubspotUrl,
     syncedAt: account.syncedAt,
   };
-  // Only write ARR when HubSpot has a value; skip 0 to preserve CSV/manual entries
+  // Only write ARR when upstream has a value; skip 0 to preserve CSV/manual entries
   if (account.arr > 0) entity.arr = account.arr;
   // Only write domain when non-empty to avoid overwriting manual corrections
   if (account.domain) entity.domain = account.domain;
   return entity as Omit<AccountEntity, 'licenses'>;
 }
 
-function fromEntity(entity: AccountEntity): HubspotAccount {
+function fromEntity(entity: AccountEntity): Account {
   return {
-    hubspotId: entity.rowKey,
+    accountId: entity.rowKey,
     accountName: entity.accountName,
     csmName: entity.csmName,
     csmEmail: entity.csmEmail,
@@ -52,6 +53,7 @@ function fromEntity(entity: AccountEntity): HubspotAccount {
     syncedAt: entity.syncedAt,
     licenses: entity.licenses ?? null,
     domain: entity.domain ?? '',
+    hidden: entity.hidden ?? false,
   };
 }
 
@@ -71,15 +73,15 @@ export class AccountStore {
   }
 
   /**
-   * Upsert account data from HubSpot using Merge mode so that manually-entered
+   * Upsert account data using Merge mode so that manually-entered
    * fields (e.g. `licenses`) are never overwritten by the nightly sync.
    */
-  async upsertAccount(account: HubspotAccount): Promise<void> {
+  async upsertAccount(account: Account): Promise<void> {
     await this.client.upsertEntity(toEntity(account), 'Merge');
   }
 
-  async listAccounts(): Promise<HubspotAccount[]> {
-    const results: HubspotAccount[] = [];
+  async listAccounts(): Promise<Account[]> {
+    const results: Account[] = [];
     for await (const entity of this.client.listEntities<AccountEntity>({
       queryOptions: { filter: odata`PartitionKey eq 'accounts'` },
     })) {
@@ -88,9 +90,9 @@ export class AccountStore {
     return results;
   }
 
-  async getById(hubspotId: string): Promise<HubspotAccount | null> {
+  async getById(accountId: string): Promise<Account | null> {
     try {
-      const entity = await this.client.getEntity<AccountEntity>('accounts', hubspotId);
+      const entity = await this.client.getEntity<AccountEntity>('accounts', accountId);
       return fromEntity(entity);
     } catch (err: any) {
       if (err?.statusCode === 404) return null;
@@ -102,9 +104,9 @@ export class AccountStore {
    * Update the licence count for a single account.
    * Uses Merge mode so only `licenses` is written; all other fields are preserved.
    */
-  async updateLicenses(hubspotId: string, licenses: number | null): Promise<void> {
+  async updateLicenses(accountId: string, licenses: number | null): Promise<void> {
     await this.client.upsertEntity(
-      { partitionKey: 'accounts', rowKey: hubspotId, licenses },
+      { partitionKey: 'accounts', rowKey: accountId, licenses },
       'Merge'
     );
   }
@@ -113,9 +115,20 @@ export class AccountStore {
    * Update the ARR for a single account.
    * Uses Merge mode so only `arr` is written; all other fields are preserved.
    */
-  async updateArr(hubspotId: string, arr: number): Promise<void> {
+  async updateArr(accountId: string, arr: number): Promise<void> {
     await this.client.upsertEntity(
-      { partitionKey: 'accounts', rowKey: hubspotId, arr },
+      { partitionKey: 'accounts', rowKey: accountId, arr },
+      'Merge'
+    );
+  }
+
+  /**
+   * Update the hidden flag for a single account.
+   * Uses Merge mode so only `hidden` is written; all other fields are preserved.
+   */
+  async updateHidden(accountId: string, hidden: boolean): Promise<void> {
+    await this.client.upsertEntity(
+      { partitionKey: 'accounts', rowKey: accountId, hidden },
       'Merge'
     );
   }

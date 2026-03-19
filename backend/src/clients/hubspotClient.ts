@@ -1,4 +1,8 @@
-import { HubspotAccount } from '../types';
+/**
+ * DISABLED: Data source switched to SQL Server [analytics].[ClientsOverview].
+ * Retained for rollback. Controlled by DATA_SOURCE env var (default: 'sql').
+ */
+import { Account } from '../types';
 
 interface CompanySearchResponse {
   results: Array<{
@@ -54,14 +58,14 @@ async function resolveOwner(
 }
 
 /**
- * Search for active HubSpot companies and map to HubspotAccount.
+ * Search for active HubSpot companies and map to Account.
  * CSM is stored as a user ID in the custom `csm` property and resolved
  * to a display name via the HubSpot owners API (results cached per sync).
  */
 export async function searchActiveCompanies(
   apiKey: string
-): Promise<HubspotAccount[]> {
-  const results: HubspotAccount[] = [];
+): Promise<Account[]> {
+  const results: Account[] = [];
   const ownerCache = new Map<string, { name: string; email: string } | null>();
   let after: string | undefined;
 
@@ -124,7 +128,7 @@ export async function searchActiveCompanies(
       }
 
       results.push({
-        hubspotId:   result.id,
+        accountId:   result.id,
         accountName: result.properties.name ?? '',
         csmName,
         csmEmail,
@@ -134,6 +138,7 @@ export async function searchActiveCompanies(
         syncedAt:    new Date().toISOString(),
         licenses:    null, // manually entered in the UI; never synced from HubSpot
         domain:      result.properties.domain ?? '',
+        hidden:      false,
       });
     }
 

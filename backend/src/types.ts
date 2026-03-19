@@ -11,6 +11,7 @@ export interface Account {
   syncedAt: string;      // ISO timestamp of last sync
   licenses: number | null; // total paid licences; null = not yet entered
   domain: string;
+  hidden: boolean;
 }
 
 // Mapping between an account and its Amplitude account alias.
