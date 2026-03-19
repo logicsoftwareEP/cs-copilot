@@ -15,11 +15,12 @@ interface ScoreEntity {
   computedAt: string;
   zendeskPenalty: number | null;
   zendeskDetails: string | null;
+  aliasStatus?: string | null;
 }
 
 function fromEntity(entity: ScoreEntity): ChurnScore {
   return {
-    hubspotId: entity.partitionKey,
+    accountId: entity.partitionKey,
     date: entity.rowKey,
     score: entity.score,
     tier: entity.tier as HealthTier | 'unmapped',
@@ -32,6 +33,7 @@ function fromEntity(entity: ScoreEntity): ChurnScore {
     computedAt: entity.computedAt,
     zendeskPenalty: entity.zendeskPenalty ?? null,
     zendeskDetails: entity.zendeskDetails ?? null,
+    aliasStatus: (entity.aliasStatus as 'valid' | 'not-found' | null) ?? null,
   };
 }
 
@@ -56,13 +58,13 @@ export class ScoreStore {
     }
   }
 
-  async getLatestScoreForAccount(hubspotId: string): Promise<ChurnScore | null> {
+  async getLatestScoreForAccount(accountId: string): Promise<ChurnScore | null> {
     const cutoff = nDaysAgoISO(90);
     const rows: ChurnScore[] = [];
 
     for await (const entity of this.client.listEntities<ScoreEntity>({
       queryOptions: {
-        filter: odata`PartitionKey eq ${hubspotId} and RowKey ge ${cutoff}`,
+        filter: odata`PartitionKey eq ${accountId} and RowKey ge ${cutoff}`,
       },
     })) {
       rows.push(fromEntity(entity));
@@ -74,13 +76,13 @@ export class ScoreStore {
     return rows[0];
   }
 
-  async getScoreHistory(hubspotId: string, days: number): Promise<ChurnScore[]> {
+  async getScoreHistory(accountId: string, days: number): Promise<ChurnScore[]> {
     const cutoff = nDaysAgoISO(days);
     const rows: ChurnScore[] = [];
 
     for await (const entity of this.client.listEntities<ScoreEntity>({
       queryOptions: {
-        filter: odata`PartitionKey eq ${hubspotId} and RowKey ge ${cutoff}`,
+        filter: odata`PartitionKey eq ${accountId} and RowKey ge ${cutoff}`,
       },
     })) {
       rows.push(fromEntity(entity));
@@ -104,7 +106,7 @@ export class ScoreStore {
 
   async upsertScore(score: ChurnScore): Promise<void> {
     await this.client.upsertEntity({
-      partitionKey: score.hubspotId,
+      partitionKey: score.accountId,
       rowKey: score.date,
       score: score.score,
       tier: score.tier,
@@ -117,6 +119,7 @@ export class ScoreStore {
       computedAt: score.computedAt,
       zendeskPenalty: score.zendeskPenalty,
       zendeskDetails: score.zendeskDetails,
+      aliasStatus: score.aliasStatus,
     }, 'Replace');
   }
 }

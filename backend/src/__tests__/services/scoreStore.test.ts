@@ -29,6 +29,7 @@ const SCORE_ENTITY = {
   computedAt: '2026-03-11T02:00:00.000Z',
   zendeskPenalty: null,
   zendeskDetails: null,
+  aliasStatus: 'valid',
 };
 
 describe('ScoreStore', () => {
@@ -49,7 +50,7 @@ describe('ScoreStore', () => {
     const result = await store.getLatestScoreForAccount('hs-123');
     expect(result?.score).toBe(72);
     expect(result?.tier).toBe('watch');
-    expect(result?.hubspotId).toBe('hs-123');
+    expect(result?.accountId).toBe('hs-123');
   });
 
   it('getLatestScoreForAccount returns null when no rows found', async () => {
@@ -71,7 +72,7 @@ describe('ScoreStore', () => {
     expect(result[1].date).toBe('2026-03-11');
   });
 
-  it('getAllScoresForDate returns map of hubspotId to score', async () => {
+  it('getAllScoresForDate returns map of accountId to score', async () => {
     const entity1 = { ...SCORE_ENTITY, partitionKey: 'hs-123', score: 72 };
     const entity2 = { ...SCORE_ENTITY, partitionKey: 'hs-456', score: 45 };
     mockListEntities.mockReturnValue((async function* () {
