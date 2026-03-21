@@ -1,5 +1,6 @@
 import { AmplitudeSignals } from '../clients/amplitudeClient';
 import { ZendeskTicketData } from '../clients/zendeskClient';
+import { IntercomAggregated } from '../services/intercomStore';
 import { HealthTier } from '../types';
 
 // Component maximums — used for normalisation
@@ -227,5 +228,156 @@ export function applyZendeskPenalty(
     score: adjustedScore,
     tier,
     zendeskPenalty: totalPenalty,
+  };
+}
+
+// ── Intercom penalty scoring ─────────────────────────────────────────────────
+
+export interface IntercomPenaltyResult {
+  totalPenalty: number;    // 0 to -12
+  openPenalty: number;     // 0 to -7
+  slowPenalty: number;     // 0 to -5
+  openCount: number;
+  avgResponseTime: number;
+}
+
+/**
+ * Compute an Intercom support penalty from aggregated conversation data.
+ *
+ * Penalty thresholds:
+ *   Open conversations:  0 → 0, 1-2 → -2, 3-5 → -4, 6+ → -7
+ *   Slow response:       avgResponseTime > 86400s AND volume >= 3 → -5, else 0
+ *
+ * Total is the sum of sub-penalties (max is -12, no additional cap needed).
+ */
+export function computeIntercomPenalty(data: IntercomAggregated): IntercomPenaltyResult {
+  // ── Open conversation penalty ──────────────────────────────────────────
+  let openPenalty = 0;
+  if (data.openCount >= 6) {
+    openPenalty = -7;
+  } else if (data.openCount >= 3) {
+    openPenalty = -4;
+  } else if (data.openCount >= 1) {
+    openPenalty = -2;
+  }
+
+  // ── Slow response penalty ──────────────────────────────────────────────
+  let slowPenalty = 0;
+  if (data.avgResponseTime > 86400 && data.conversationVolume >= 3) {
+    slowPenalty = -5;
+  }
+
+  const totalPenalty = openPenalty + slowPenalty;
+
+  return {
+    totalPenalty,
+    openPenalty,
+    slowPenalty,
+    openCount: data.openCount,
+    avgResponseTime: data.avgResponseTime,
+  };
+}
+
+// ── Intercom bonus scoring ───────────────────────────────────────────────────
+
+export interface IntercomBonusResult {
+  totalBonus: number;           // 0 to +10
+  quickResolutionBonus: number; // 0 to +4
+  aiBonus: number;              // 0 to +3
+  engagementBonus: number;      // 0 to +3
+}
+
+/**
+ * Compute an Intercom engagement bonus from aggregated conversation data.
+ *
+ * Bonus thresholds:
+ *   Quick resolutions: 0 → 0, >=1 → +1, >=3 → +2, >=5 → +4
+ *   AI handled:        0 → 0, >=1 → +1, >=3 → +3
+ *   Engagement:        volume >= 3 AND openCount <= 1 → +3, else 0
+ *
+ * Total is capped at +10.
+ */
+export function computeIntercomBonus(data: IntercomAggregated): IntercomBonusResult {
+  // ── Quick resolution bonus ──────────────────────────────────────────────
+  let quickResolutionBonus = 0;
+  if (data.quickResolutions >= 5) {
+    quickResolutionBonus = 4;
+  } else if (data.quickResolutions >= 3) {
+    quickResolutionBonus = 2;
+  } else if (data.quickResolutions >= 1) {
+    quickResolutionBonus = 1;
+  }
+
+  // ── AI handled bonus ────────────────────────────────────────────────────
+  let aiBonus = 0;
+  if (data.aiHandled >= 3) {
+    aiBonus = 3;
+  } else if (data.aiHandled >= 1) {
+    aiBonus = 1;
+  }
+
+  // ── Engagement bonus ────────────────────────────────────────────────────
+  let engagementBonus = 0;
+  if (data.conversationVolume >= 3 && data.openCount <= 1) {
+    engagementBonus = 3;
+  }
+
+  const totalBonus = Math.min(10, quickResolutionBonus + aiBonus + engagementBonus);
+
+  return {
+    totalBonus,
+    quickResolutionBonus,
+    aiBonus,
+    engagementBonus,
+  };
+}
+
+// ── Combined penalty application ─────────────────────────────────────────────
+
+/**
+ * Apply all available penalties and bonuses to a base health-score result.
+ *
+ * Combines Zendesk and Intercom penalties (capped at -20 combined),
+ * then adds the Intercom bonus, and clamps the final score to 0-110.
+ * If the base score is null (unmapped account), penalties are attached
+ * for informational purposes but the score is not adjusted.
+ */
+export function applyAllPenalties(
+  baseResult: HealthScoreResult,
+  zendeskData: ZendeskTicketData | null,
+  intercomData: IntercomAggregated | null,
+): HealthScoreResult & { zendeskPenalty: number | null; intercomPenalty: number | null; intercomBonus: number | null } {
+  const zdPenalty = zendeskData !== null ? computeZendeskPenalty(zendeskData).totalPenalty : null;
+  const icPenalty = intercomData !== null ? computeIntercomPenalty(intercomData).totalPenalty : null;
+  const icBonus = intercomData !== null ? computeIntercomBonus(intercomData).totalBonus : null;
+
+  // If base score is null (unmapped), attach penalties but don't adjust score
+  if (baseResult.score === null) {
+    return {
+      ...baseResult,
+      zendeskPenalty: zdPenalty,
+      intercomPenalty: icPenalty,
+      intercomBonus: icBonus,
+    };
+  }
+
+  // Combined penalty capped at -20
+  const rawCombinedPenalty = (zdPenalty ?? 0) + (icPenalty ?? 0);
+  const combinedPenalty = Math.max(rawCombinedPenalty, -20);
+
+  // Apply penalty then bonus, clamp final score to 0-110
+  const afterPenalty = baseResult.score + combinedPenalty;
+  const afterBonus = afterPenalty + (icBonus ?? 0);
+  const finalScore = Math.min(110, Math.max(0, afterBonus));
+
+  const tier = scoreToTier(finalScore);
+
+  return {
+    ...baseResult,
+    score: finalScore,
+    tier,
+    zendeskPenalty: zdPenalty,
+    intercomPenalty: icPenalty,
+    intercomBonus: icBonus,
   };
 }
