@@ -77,8 +77,8 @@ const COMPANY_B: Account = {
   hidden: false,
 };
 
-// GOOD_SIGNALS: dauWauTrend ≥0.1 (40pts) + monthlyActiveUsers (unused, licenses null) + featureBreadth ≥75% (25pts)
-// With no licenses: rawScore = 40+25 = 65, maxPossible = 65 → finalScore = 100
+// GOOD_SIGNALS: dauWauTrend ≥0.1 (25pts) + monthlyActiveUsers (unused, licenses null) + featureAdoption ≥75% (15pts)
+// With no licenses: rawScore = 25+15 = 40, maxPossible = 40 → finalScore = 100
 const GOOD_SIGNALS: AmplitudeSignals = {
   dauWauTrend: 0.15,
   monthlyActiveUsers: 50,
@@ -265,7 +265,7 @@ describe('runSync', () => {
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
-    // GOOD_SIGNALS + licenses=null: dauWau(40) + login(25) = 65/65*100 = 100
+    // GOOD_SIGNALS + licenses=null: dauWau(25) + featureAdoption(15) = 40/40*100 = 100
     mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
 
     const result = await runSync();
@@ -287,13 +287,13 @@ describe('runSync', () => {
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]); // licenses=null from HubSpot
-    // dauWau ≥0.1 (40) + MAU 50/100=50% ≥40% (15) + featureBreadth ≥75% (25) = 80/100 = 80
+    // licenseUtil 50/100=50% ≥40% (30) + dauWau ≥0.1 (25) + featureAdoption ≥75% (15) = 70/100 = 70
     mockFetchSignals.mockResolvedValue({ dauWauTrend: 0.15, monthlyActiveUsers: 50, featureBreadth: { used: ['A','B','C','D','E','F','G','H','I','J'], total: 12 } });
 
     await runSync();
 
     const scoreCall = upsertScore.mock.calls[0][0];
-    expect(scoreCall.score).toBe(80); // uses licenses=100 from store
+    expect(scoreCall.score).toBe(70); // uses licenses=100 from store
     expect(scoreCall.licenseUtilization).toBeCloseTo(0.5);
   });
 

@@ -2,6 +2,18 @@ import { AmplitudeSignals } from '../clients/amplitudeClient';
 import { ZendeskTicketData } from '../clients/zendeskClient';
 import { HealthTier } from '../types';
 
+// Component maximums — used for normalisation
+const LICENSE_MAX = 60;
+const ACTIVITY_MAX = 25;
+const FEATURE_MAX = 15;
+
+function scoreToTier(score: number): HealthTier {
+  if (score >= 80) return 'healthy';
+  if (score >= 60) return 'watch';
+  if (score >= 40) return 'at-risk';
+  return 'critical';
+}
+
 export interface HealthScoreResult {
   score: number | null;
   tier: HealthTier | 'unmapped';
@@ -15,16 +27,16 @@ export interface HealthScoreResult {
  * Compute health score from Amplitude signals and account license count.
  *
  * Scoring breakdown:
- * - DAU/WAU trend      (0–40 points) — same bands regardless of licenses
- * - License utilisation (0–35 points) — MAU ÷ licenses; omitted when licenses not set
- * - Feature breadth    (0–25 points) — ratio of feature categories used in last 30d
+ * - License utilisation (0–60 points) — MAU ÷ licenses; omitted when licenses not set
+ * - Activity trend      (0–25 points) — DAU/WAU trend; same bands regardless of licenses
+ * - Feature adoption    (0–15 points) — ratio of feature categories used in last 30d
  *
  * Normalisation:
- *   maxPossible = licenses !== null ? 100 : 65
+ *   maxPossible = licenses !== null ? 100 : 40
  *   finalScore  = Math.round(rawScore / maxPossible × 100)
  *
  * This ensures the score is always expressed as a percentage of available signals.
- * When licenses are not yet entered, the score is normalised out of 65 (max from
+ * When licenses are not yet entered, the score is normalised out of 40 (max from
  * the two Amplitude signals we can still compute).
  *
  * Returns score=null and tier='unmapped' only when ALL Amplitude signals are null.
@@ -47,21 +59,7 @@ export function computeScore(
     };
   }
 
-  // ── Component 1: DAU/WAU trend (0–40 points) ──────────────────────────────
-  let dauWauScore = 0;
-  if (dauWauTrend !== null) {
-    if (dauWauTrend >= 0.1) {
-      dauWauScore = 40;
-    } else if (dauWauTrend > -0.1) {
-      dauWauScore = 25;
-    } else if (dauWauTrend >= -0.3) {
-      dauWauScore = 10;
-    } else {
-      dauWauScore = 0;
-    }
-  }
-
-  // ── Component 2: License utilisation (0–35 points) ───────────────────────
+  // ── Component 1: License utilisation (0–60 points) ───────────────────────
   let licenseUtilization: number | null = null;
   let licenseScore = 0;
 
@@ -69,28 +67,42 @@ export function computeScore(
     licenseUtilization = Math.min(1, monthlyActiveUsers / licenses);
 
     if (licenseUtilization >= 0.8) {
-      licenseScore = 35;
+      licenseScore = 60;
     } else if (licenseUtilization >= 0.6) {
-      licenseScore = 25;
+      licenseScore = 45;
     } else if (licenseUtilization >= 0.4) {
-      licenseScore = 15;
+      licenseScore = 30;
     } else if (licenseUtilization >= 0.2) {
-      licenseScore = 5;
+      licenseScore = 15;
     } else {
       licenseScore = 0;
     }
   }
 
-  // ── Component 3: Feature breadth (0–25 points) ────────────────────────────
+  // ── Component 2: Activity trend (0–25 points) ──────────────────────────────
+  let dauWauScore = 0;
+  if (dauWauTrend !== null) {
+    if (dauWauTrend >= 0.1) {
+      dauWauScore = 25;
+    } else if (dauWauTrend > -0.1) {
+      dauWauScore = 15;
+    } else if (dauWauTrend >= -0.3) {
+      dauWauScore = 6;
+    } else {
+      dauWauScore = 0;
+    }
+  }
+
+  // ── Component 3: Feature adoption (0–15 points) ────────────────────────────
   let featureScore = 0;
   if (featureBreadth !== null && featureBreadth.total > 0) {
     const ratio = featureBreadth.used.length / featureBreadth.total;
     if (ratio >= 0.75) {
-      featureScore = 25;
+      featureScore = 15;
     } else if (ratio >= 0.50) {
-      featureScore = 16;
+      featureScore = 10;
     } else if (ratio >= 0.25) {
-      featureScore = 8;
+      featureScore = 5;
     } else {
       featureScore = 0;
     }
@@ -98,20 +110,12 @@ export function computeScore(
 
   // ── Normalise ─────────────────────────────────────────────────────────────
   const rawScore = dauWauScore + licenseScore + featureScore;
-  const maxPossible = licenses !== null ? 100 : 65;
+  const maxPossible = licenses !== null
+    ? LICENSE_MAX + ACTIVITY_MAX + FEATURE_MAX
+    : ACTIVITY_MAX + FEATURE_MAX;
   const score = Math.round((rawScore / maxPossible) * 100);
 
-  // ── Tier ──────────────────────────────────────────────────────────────────
-  let tier: HealthTier | 'unmapped';
-  if (score >= 80) {
-    tier = 'healthy';
-  } else if (score >= 60) {
-    tier = 'watch';
-  } else if (score >= 40) {
-    tier = 'at-risk';
-  } else {
-    tier = 'critical';
-  }
+  const tier = scoreToTier(score);
 
   return {
     score,
@@ -216,18 +220,7 @@ export function applyZendeskPenalty(
   }
 
   const adjustedScore = Math.max(0, baseResult.score + totalPenalty);
-
-  // Re-derive tier from adjusted score
-  let tier: HealthTier | 'unmapped';
-  if (adjustedScore >= 80) {
-    tier = 'healthy';
-  } else if (adjustedScore >= 60) {
-    tier = 'watch';
-  } else if (adjustedScore >= 40) {
-    tier = 'at-risk';
-  } else {
-    tier = 'critical';
-  }
+  const tier = scoreToTier(adjustedScore);
 
   return {
     ...baseResult,

@@ -35,24 +35,24 @@ describe('healthScoreService', () => {
       expect(result.featuresUsed).toBeNull();
     });
 
-    // ── Normalisation: no licenses (maxPossible = 65) ─────────────────────
+    // ── Normalisation: no licenses (maxPossible = 40) ─────────────────────
 
     it('normalises to 100 when all signals present and maxed out (no licenses)', () => {
-      // dauWau ≥0.1 (40) + featureBreadth ≥75% (25) = 65/65 = 100
+      // dauWau ≥0.1 (25) + featureAdoption ≥75% (15) = 40/40 = 100
       const result = computeScore(sig({ dauWauTrend: 0.15, featureBreadth: fb(10, 12) }), null);
       expect(result.score).toBe(100);
       expect(result.tier).toBe('healthy');
     });
 
     it('normalises partial signals correctly (no licenses)', () => {
-      // dauWau ≥0.1 (40) + featureBreadth null (0) = 40/65*100 = 62
+      // dauWau ≥0.1 (25) + featureAdoption null (0) = 25/40*100 = 63
       const result = computeScore(sig({ dauWauTrend: 0.15 }), null);
-      expect(result.score).toBe(62);
+      expect(result.score).toBe(63);
       expect(result.tier).toBe('watch');
     });
 
     it('normalises featureBreadth-only signal (no licenses)', () => {
-      // featureBreadth ≥75% (25) = 25/65*100 = 38 → critical
+      // featureAdoption ≥75% (15) = 15/40*100 = 38 → critical
       const result = computeScore(sig({ featureBreadth: fb(10, 12) }), null);
       expect(result.score).toBe(38);
       expect(result.tier).toBe('critical');
@@ -61,7 +61,7 @@ describe('healthScoreService', () => {
     // ── Normalisation: licenses set (maxPossible = 100) ───────────────────
 
     it('score = raw points when licenses set (no normalisation needed)', () => {
-      // dauWau ≥0.1 (40) + licenseUtil 80% (35) + featureBreadth ≥75% (25) = 100/100 = 100
+      // licenseUtil 80% (60) + dauWau ≥0.1 (25) + featureAdoption ≥75% (15) = 100/100 = 100
       const result = computeScore(
         sig({ dauWauTrend: 0.15, monthlyActiveUsers: 80, featureBreadth: fb(10, 12) }),
         100
@@ -71,101 +71,101 @@ describe('healthScoreService', () => {
     });
 
     it('partial score with licenses set', () => {
-      // dauWau stable (25) + licenseUtil 60% (25) + featureBreadth null (0) = 50/100 = 50 → at-risk
+      // licenseUtil 60% (45) + dauWau stable (15) + featureAdoption null (0) = 60/100 = 60 → watch
       const result = computeScore(
         sig({ dauWauTrend: 0.0, monthlyActiveUsers: 60 }),
         100
       );
-      expect(result.score).toBe(50);
-      expect(result.tier).toBe('at-risk');
+      expect(result.score).toBe(60);
+      expect(result.tier).toBe('watch');
     });
 
     it('no license score when monthlyActiveUsers is null (licenses set)', () => {
-      // dauWau ≥0.1 (40) + licenseUtil null (0) + featureBreadth ≥75% (25) = 65/100 = 65 → watch
+      // licenseUtil null (0) + dauWau ≥0.1 (25) + featureAdoption ≥75% (15) = 40/100 = 40 → at-risk
       const result = computeScore(
         sig({ dauWauTrend: 0.15, featureBreadth: fb(10, 12) }),
         100
       );
-      expect(result.score).toBe(65);
-      expect(result.tier).toBe('watch');
+      expect(result.score).toBe(40);
+      expect(result.tier).toBe('at-risk');
     });
 
-    // ── DAU/WAU trend bands ───────────────────────────────────────────────
+    // ── Activity trend bands (0–25) ─────────────────────────────────────────
 
-    it('dauWauTrend ≥ 0.10 scores 40 points', () => {
+    it('dauWauTrend ≥ 0.10 scores 25 points', () => {
       const r = computeScore(sig({ dauWauTrend: 0.1 }), null);
-      // 40/65*100 = 62
-      expect(r.score).toBe(62);
+      // 25/40*100 = 63
+      expect(r.score).toBe(63);
     });
 
-    it('dauWauTrend > 0.10 scores 40 points', () => {
+    it('dauWauTrend > 0.10 scores 25 points', () => {
       const r = computeScore(sig({ dauWauTrend: 0.5 }), null);
-      expect(r.score).toBe(62);
+      expect(r.score).toBe(63);
     });
 
-    it('dauWauTrend 0.09 (stable) scores 25 points', () => {
-      // 25/65*100 = 38
+    it('dauWauTrend 0.09 (stable) scores 15 points', () => {
+      // 15/40*100 = 38
       const r = computeScore(sig({ dauWauTrend: 0.09 }), null);
       expect(r.score).toBe(38);
     });
 
-    it('dauWauTrend 0.0 (stable) scores 25 points', () => {
+    it('dauWauTrend 0.0 (stable) scores 15 points', () => {
       const r = computeScore(sig({ dauWauTrend: 0.0 }), null);
       expect(r.score).toBe(38);
     });
 
-    it('dauWauTrend -0.09 (stable) scores 25 points', () => {
+    it('dauWauTrend -0.09 (stable) scores 15 points', () => {
       const r = computeScore(sig({ dauWauTrend: -0.09 }), null);
       expect(r.score).toBe(38);
     });
 
-    it('dauWauTrend -0.10 scores 10 points', () => {
-      // 10/65*100 = 15
+    it('dauWauTrend -0.10 scores 6 points', () => {
+      // 6/40*100 = 15
       const r = computeScore(sig({ dauWauTrend: -0.1 }), null);
       expect(r.score).toBe(15);
     });
 
-    it('dauWauTrend -0.30 scores 10 points', () => {
+    it('dauWauTrend -0.30 scores 6 points', () => {
       const r = computeScore(sig({ dauWauTrend: -0.3 }), null);
       expect(r.score).toBe(15);
     });
 
     it('dauWauTrend -0.31 scores 0 points', () => {
-      // 0/65*100 = 0
+      // 0/40*100 = 0
       const r = computeScore(sig({ dauWauTrend: -0.31 }), null);
       expect(r.score).toBe(0);
     });
 
-    // ── License utilisation bands ─────────────────────────────────────────
+    // ── License utilisation bands (0–60) ─────────────────────────────────────
 
-    it('licenseUtil ≥ 80% scores 35 points', () => {
+    it('licenseUtil ≥ 80% scores 60 points', () => {
       const r = computeScore(sig({ monthlyActiveUsers: 80 }), 100);
-      // 35/100 = 35
-      expect(r.score).toBe(35);
+      // 60/100 = 60
+      expect(r.score).toBe(60);
       expect(r.licenseUtilization).toBeCloseTo(0.8);
     });
 
-    it('licenseUtil = 100% (clamped to 1) scores 35 points', () => {
+    it('licenseUtil = 100% (clamped to 1) scores 60 points', () => {
       const r = computeScore(sig({ monthlyActiveUsers: 120 }), 100);
-      expect(r.score).toBe(35);
+      expect(r.score).toBe(60);
       expect(r.licenseUtilization).toBe(1);
     });
 
-    it('licenseUtil ≥ 60% scores 25 points', () => {
+    it('licenseUtil ≥ 60% scores 45 points', () => {
       const r = computeScore(sig({ monthlyActiveUsers: 60 }), 100);
-      expect(r.score).toBe(25);
+      expect(r.score).toBe(45);
       expect(r.licenseUtilization).toBeCloseTo(0.6);
     });
 
-    it('licenseUtil ≥ 40% scores 15 points', () => {
+    it('licenseUtil ≥ 40% scores 30 points', () => {
       const r = computeScore(sig({ monthlyActiveUsers: 40 }), 100);
-      expect(r.score).toBe(15);
+      expect(r.score).toBe(30);
       expect(r.licenseUtilization).toBeCloseTo(0.4);
     });
 
-    it('licenseUtil ≥ 20% scores 5 points', () => {
+    it('licenseUtil ≥ 20% scores 15 points', () => {
       const r = computeScore(sig({ monthlyActiveUsers: 20 }), 100);
-      expect(r.score).toBe(5);
+      expect(r.score).toBe(15);
     });
 
     it('licenseUtil < 20% scores 0 points', () => {
@@ -189,44 +189,44 @@ describe('healthScoreService', () => {
       expect(r.licenseUtilization).toBeNull();
     });
 
-    // ── Feature breadth bands ───────────────────────────────────────────
+    // ── Feature adoption bands (0–15) ───────────────────────────────────────
 
-    it('featureBreadth ≥75% scores 25 points', () => {
-      // 9/12 = 0.75 → 25 pts; 25/65*100 = 38
+    it('featureAdoption ≥75% scores 15 points', () => {
+      // 9/12 = 0.75 → 15 pts; 15/40*100 = 38
       const r = computeScore(sig({ featureBreadth: fb(9, 12) }), null);
       expect(r.score).toBe(38);
       expect(r.featuresUsed).toBe(9);
     });
 
-    it('featureBreadth ≥50% scores 16 points', () => {
-      // 6/12 = 0.50 → 16 pts; 16/65*100 = 25 (Math.round)
+    it('featureAdoption ≥50% scores 10 points', () => {
+      // 6/12 = 0.50 → 10 pts; 10/40*100 = 25
       const r = computeScore(sig({ featureBreadth: fb(6, 12) }), null);
       expect(r.score).toBe(25);
       expect(r.featuresUsed).toBe(6);
     });
 
-    it('featureBreadth ≥25% scores 8 points', () => {
-      // 3/12 = 0.25 → 8 pts; 8/65*100 = 12
+    it('featureAdoption ≥25% scores 5 points', () => {
+      // 3/12 = 0.25 → 5 pts; 5/40*100 = 13
       const r = computeScore(sig({ featureBreadth: fb(3, 12) }), null);
-      expect(r.score).toBe(12);
+      expect(r.score).toBe(13);
       expect(r.featuresUsed).toBe(3);
     });
 
-    it('featureBreadth <25% scores 0 points', () => {
+    it('featureAdoption <25% scores 0 points', () => {
       // 2/12 = 0.167 → 0 pts
       const r = computeScore(sig({ featureBreadth: fb(2, 12) }), null);
       expect(r.score).toBe(0);
       expect(r.featuresUsed).toBe(2);
     });
 
-    it('featureBreadth 0 features scores 0 points', () => {
+    it('featureAdoption 0 features scores 0 points', () => {
       const r = computeScore(sig({ featureBreadth: fb(0, 12) }), null);
       expect(r.score).toBe(0);
       expect(r.featuresUsed).toBe(0);
     });
 
-    it('featureBreadth 100% scores 25 points', () => {
-      // 12/12 = 1.0 → 25 pts; 25/65*100 = 38
+    it('featureAdoption 100% scores 15 points', () => {
+      // 12/12 = 1.0 → 15 pts; 15/40*100 = 38
       const r = computeScore(sig({ featureBreadth: fb(12, 12) }), null);
       expect(r.score).toBe(38);
       expect(r.featuresUsed).toBe(12);
@@ -235,7 +235,7 @@ describe('healthScoreService', () => {
     // ── Tier assignments ───────────────────────────────────────────────────
 
     it('score ≥ 80 → healthy', () => {
-      // 40+35+25=100 with licenses
+      // 60+25+15=100 with licenses
       const r = computeScore(
         sig({ dauWauTrend: 0.15, monthlyActiveUsers: 80, featureBreadth: fb(10, 12) }),
         100
@@ -244,19 +244,19 @@ describe('healthScoreService', () => {
     });
 
     it('score = 60 → watch', () => {
-      // dauWau stable (25) + licenseUtil 60% (25) + featureBreadth ≥50% (16) = 66/100 → watch
+      // licenseUtil 60% (45) + dauWau stable (15) + featureAdoption ≥50% (10) = 70/100 → watch
       const r = computeScore(
         sig({ dauWauTrend: 0.0, monthlyActiveUsers: 60, featureBreadth: fb(6, 12) }),
         100
       );
-      expect(r.score).toBe(66);
+      expect(r.score).toBe(70);
       expect(r.tier).toBe('watch');
     });
 
     it('score in at-risk range', () => {
-      // dauWau stable (25) + featureBreadth ≥25% (8) = 33/65*100 = 51 → at-risk
+      // dauWau stable (15) + featureAdoption ≥25% (5) = 20/40*100 = 50 → at-risk
       const r = computeScore(sig({ dauWauTrend: 0.0, featureBreadth: fb(3, 12) }), null);
-      expect(r.score).toBe(51);
+      expect(r.score).toBe(50);
       expect(r.tier).toBe('at-risk');
     });
 
@@ -287,7 +287,7 @@ describe('healthScoreService', () => {
     // ── Realistic combined scenario ───────────────────────────────────────
 
     it('realistic healthy account: stable growth, 70% utilisation, good feature breadth', () => {
-      // dauWau 0.05 → stable (25) + licenseUtil 70/100=0.7 ≥60% (25) + featureBreadth ≥75% (25) = 75/100 = 75 → watch
+      // licenseUtil 70/100=0.7 ≥60% (45) + dauWau 0.05 stable (15) + featureAdoption ≥75% (15) = 75/100 = 75 → watch
       const r = computeScore(
         sig({ dauWauTrend: 0.05, monthlyActiveUsers: 70, featureBreadth: fb(10, 12) }),
         100
@@ -297,12 +297,12 @@ describe('healthScoreService', () => {
     });
 
     it('realistic at-risk account: declining, low utilisation, low feature breadth', () => {
-      // dauWau -0.15 (10) + licenseUtil 30/200=0.15 <20% (0) + featureBreadth 2/12=0.167 <25% (0) = 10/100 → critical
+      // licenseUtil 30/200=0.15 <20% (0) + dauWau -0.15 (6) + featureAdoption 2/12<25% (0) = 6/100 → critical
       const r = computeScore(
         sig({ dauWauTrend: -0.15, monthlyActiveUsers: 30, featureBreadth: fb(2, 12) }),
         200
       );
-      expect(r.score).toBe(10);
+      expect(r.score).toBe(6);
       expect(r.tier).toBe('critical');
     });
   });

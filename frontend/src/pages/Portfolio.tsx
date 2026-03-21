@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses, updateAccountArr, updateAccountHidden, upsertMapping, deleteMapping } from '../services/api';
+import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses, updateAccountArr, updateAccountHidden, upsertMapping, deleteMapping, refreshAccountScore } from '../services/api';
 import { AccountSummary, AccountDetail, HealthTier, ChurnScore } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -31,9 +31,9 @@ function dauWauInfo(trend: number | null) {
   const pct = Math.round(trend * 100);
   const sign = pct >= 0 ? '+' : '';
   const detail = `${sign}${pct}% DAU/WAU ratio change over 28 days`;
-  if (trend >= 0.1)  return { pts: 40, label: 'Growing',          detail, hint: 'More users logging in more often than last period.' };
-  if (trend > -0.1)  return { pts: 25, label: 'Stable',           detail, hint: 'Usage is holding steady — no significant change.' };
-  if (trend >= -0.3) return { pts: 10, label: 'Declining',        detail, hint: 'Fewer users logging in than last period.' };
+  if (trend >= 0.1)  return { pts: 25, label: 'Growing',          detail, hint: 'More users logging in more often than last period.' };
+  if (trend > -0.1)  return { pts: 15, label: 'Stable',           detail, hint: 'Usage is holding steady — no significant change.' };
+  if (trend >= -0.3) return { pts: 6,  label: 'Declining',        detail, hint: 'Fewer users logging in than last period.' };
                      return { pts: 0,  label: 'Critical decline',  detail, hint: 'A sharp drop in daily active users. Follow up urgently.' };
 }
 
@@ -45,10 +45,10 @@ function licenseInfo(mau: number | null, licenses: number | null) {
   const util = Math.min(1, mau / Math.max(1, licenses));
   const pct = Math.round(util * 100);
   let pts = 0;
-  if (util >= 0.8) pts = 35;
-  else if (util >= 0.6) pts = 25;
-  else if (util >= 0.4) pts = 15;
-  else if (util >= 0.2) pts = 5;
+  if (util >= 0.8) pts = 60;
+  else if (util >= 0.6) pts = 45;
+  else if (util >= 0.4) pts = 30;
+  else if (util >= 0.2) pts = 15;
   const hint =
     util >= 0.8 ? 'Excellent adoption — the team is fully engaged.' :
     util >= 0.6 ? 'Good adoption — most seats are in active use.' :
@@ -62,9 +62,9 @@ function featureBreadthInfo(featuresUsed: number | null, total = 12) {
   if (featuresUsed === null) return { pts: 0, label: 'No data', detail: 'No feature usage data', hint: null };
   const ratio = total > 0 ? featuresUsed / total : 0;
   const detail = `${featuresUsed} of ${total} tracked feature categories in active use`;
-  if (ratio >= 0.75) return { pts: 25, label: `${featuresUsed}/${total}`, detail, hint: 'Broad adoption — deeply embedded in the product.' };
-  if (ratio >= 0.50) return { pts: 16, label: `${featuresUsed}/${total}`, detail, hint: 'Moderate adoption — good usage across key areas.' };
-  if (ratio >= 0.25) return { pts: 8,  label: `${featuresUsed}/${total}`, detail, hint: 'Narrow adoption — opportunity to expand usage.' };
+  if (ratio >= 0.75) return { pts: 15, label: `${featuresUsed}/${total}`, detail, hint: 'Broad adoption — deeply embedded in the product.' };
+  if (ratio >= 0.50) return { pts: 10, label: `${featuresUsed}/${total}`, detail, hint: 'Moderate adoption — good usage across key areas.' };
+  if (ratio >= 0.25) return { pts: 5,  label: `${featuresUsed}/${total}`, detail, hint: 'Narrow adoption — opportunity to expand usage.' };
                      return { pts: 0,  label: `${featuresUsed}/${total}`, detail, hint: 'Minimal adoption — high churn risk.' };
 }
 
@@ -241,9 +241,12 @@ function MetricCard({ label, value, sub, accent, delay }: {
 
 // ─── Detail panel ─────────────────────────────────────────────────────────────
 
-function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: () => void }) {
+function DetailPanel({ summary, onClose, onScoreRefreshed }: { summary: AccountSummary; onClose: () => void; onScoreRefreshed?: (accountId: string, score: number | null, tier: string) => void }) {
+  const { user } = useAuth();
+  const canRefresh = user?.role === 'admin' || user?.role === 'supervisor';
   const [detail, setDetail] = useState<AccountDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     setDetail(null);
@@ -362,9 +365,9 @@ function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: (
               ) : (
                 <div className="space-y-4">
                   {[
-                    { label: 'Activity Trend',       sublabel: 'DAU/WAU over 28 days',            max: 40, info: dau },
-                    { label: 'Licence Utilisation',   sublabel: 'MAU / paid seats',                max: 35, info: license },
-                    { label: 'Feature Adoption',      sublabel: 'Categories used in last 30 days', max: 25, info: fb },
+                    { label: 'Licence Utilisation',   sublabel: 'MAU / paid seats',                max: 60, info: license },
+                    { label: 'Activity Trend',       sublabel: 'DAU/WAU over 28 days',            max: 25, info: dau },
+                    { label: 'Feature Adoption',      sublabel: 'Categories used in last 30 days', max: 15, info: fb },
                   ].map(({ label, sublabel, max, info }) => {
                     const pct = max > 0 ? info.pts / max : 0;
                     const barColor = pct >= 0.7 ? '#34D399' : pct >= 0.4 ? '#FBBF24' : pct > 0 ? '#FB923C' : '#5A6170';
@@ -446,17 +449,17 @@ function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: (
                   <div className="rounded-lg bg-obs-card border border-obs-edge px-4 py-3 space-y-2">
                     <p className="text-[14px] font-semibold text-obs-ghost uppercase tracking-[0.12em]">Scoring Key</p>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[14px] text-obs-dim">
-                      <span>Activity growing (+10%)  <b className="text-obs-text">40</b></span>
-                      <span>Stable (-10% to +10%)    <b className="text-obs-text">25</b></span>
-                      <span>Utilisation {'\u2265'}80%          <b className="text-obs-text">35</b></span>
-                      <span>Utilisation {'\u2265'}60%          <b className="text-obs-text">25</b></span>
-                      <span>Features {'\u2265'}75%             <b className="text-obs-text">25</b></span>
-                      <span>Features {'\u2265'}50%             <b className="text-obs-text">16</b></span>
+                      <span>Utilisation {'\u2265'}80%          <b className="text-obs-text">60</b></span>
+                      <span>Utilisation {'\u2265'}60%          <b className="text-obs-text">45</b></span>
+                      <span>Activity growing (+10%)  <b className="text-obs-text">25</b></span>
+                      <span>Stable (-10% to +10%)    <b className="text-obs-text">15</b></span>
+                      <span>Features {'\u2265'}75%             <b className="text-obs-text">15</b></span>
+                      <span>Features {'\u2265'}50%             <b className="text-obs-text">10</b></span>
                     </div>
                     <div className="border-t border-obs-edge pt-2 text-[14px] text-obs-ghost">
                       {hasLicenses
                         ? 'Score out of 100 (all three signals active)'
-                        : 'Score out of 65 — enter licence count to unlock utilisation'}
+                        : 'Score out of 40 — enter licence count to unlock utilisation'}
                     </div>
                     <div className="border-t border-obs-edge pt-2 text-[14px] text-obs-ghost">
                       <span className="text-obs-dim">Tiers: </span>
@@ -517,11 +520,45 @@ function DetailPanel({ summary, onClose }: { summary: AccountSummary; onClose: (
 
         {/* Footer */}
         <div className="px-6 py-3.5 border-t border-obs-edge flex-shrink-0 bg-obs-base">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ background: tierCfg.color, boxShadow: `0 0 6px ${tierCfg.glow}` }} />
-            <span className="text-[14px] text-obs-dim">
-              {tierCfg.label} — score {summary.score ?? 'N/A'}/100
-            </span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: tierCfg.color, boxShadow: `0 0 6px ${tierCfg.glow}` }} />
+              <span className="text-[14px] text-obs-dim">
+                {tierCfg.label} — score {summary.score ?? 'N/A'}/100
+              </span>
+            </div>
+            {canRefresh && summary.amplitudeAlias && (
+              <button
+                onClick={async () => {
+                  setRefreshing(true);
+                  try {
+                    const result = await refreshAccountScore(summary.accountId);
+                    // Reload detail panel
+                    const refreshed = await getAccountDetail(summary.accountId);
+                    setDetail(refreshed);
+                    onScoreRefreshed?.(summary.accountId, result.score, result.tier);
+                  } catch (err) {
+                    console.warn('Score refresh failed:', err);
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
+                disabled={refreshing}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-obs-accent hover:text-obs-glow border border-obs-accent/30 hover:border-obs-accent/60 rounded-lg transition-all disabled:opacity-50"
+              >
+                {refreshing ? (
+                  <><Spinner className="h-3.5 w-3.5" /> Scoring...</>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    </svg>
+                    Refresh Score
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </aside>
@@ -696,6 +733,7 @@ export default function Portfolio() {
   }, [accounts, search, filterTier, filterOwner, sortCol, sortDir, showHidden]);
 
   const unmappedCount = activeAccounts.filter(a => !a.amplitudeAlias).length;
+  const syncLabel = lastSyncedLabel(accounts);
 
   // Portfolio metrics
   const totalArr = activeAccounts.reduce((sum, a) => sum + (a.arr ?? 0), 0);
@@ -735,9 +773,9 @@ export default function Portfolio() {
           </div>
         </div>
         <nav className="flex items-center gap-3">
-          {accounts.length > 0 && lastSyncedLabel(accounts) && (
+          {syncLabel && (
             <span className="text-[14px] text-obs-ghost font-mono mr-1">
-              Synced {lastSyncedLabel(accounts)}
+              Synced {syncLabel}
             </span>
           )}
           {unmappedCount > 0 && (
@@ -1209,7 +1247,16 @@ export default function Portfolio() {
 
       {/* ── Detail panel ── */}
       {selected && (
-        <DetailPanel summary={selected} onClose={() => setSelected(null)} />
+        <DetailPanel
+          summary={selected}
+          onClose={() => setSelected(null)}
+          onScoreRefreshed={(accountId, score, tier) => {
+            setAccounts(prev => prev.map(a =>
+              a.accountId === accountId ? { ...a, score, tier: tier as any } : a
+            ));
+            setSelected(prev => prev && prev.accountId === accountId ? { ...prev, score, tier: tier as any } : prev);
+          }}
+        />
       )}
     </div>
   );
