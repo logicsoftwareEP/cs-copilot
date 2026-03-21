@@ -1,0 +1,421 @@
+{
+  "matched": 188,
+  "casingIssues": [
+    {
+      "accountId": "2221140948",
+      "sqlAlias": "CarrollCCEDU",
+      "status": "CASING_MISMATCH",
+      "users": 25
+    },
+    {
+      "accountId": "14783716002",
+      "sqlAlias": "delarca",
+      "status": "CASING_MISMATCH",
+      "users": 1
+    },
+    {
+      "accountId": "2424143509",
+      "sqlAlias": "blackfoot1",
+      "status": "CASING_MISMATCH",
+      "users": 73
+    },
+    {
+      "accountId": "2233116449",
+      "sqlAlias": "Vitokengineers",
+      "status": "CASING_MISMATCH",
+      "users": 26
+    },
+    {
+      "accountId": "2291038633",
+      "sqlAlias": "ofdfoods",
+      "status": "CASING_MISMATCH",
+      "users": 7
+    },
+    {
+      "accountId": "3006786183",
+      "sqlAlias": "pmdar",
+      "status": "CASING_MISMATCH",
+      "users": 17
+    },
+    {
+      "accountId": "2424231804",
+      "sqlAlias": "topbagage",
+      "status": "CASING_MISMATCH",
+      "users": 12
+    },
+    {
+      "accountId": "2424195274",
+      "sqlAlias": "wonderfulcitrus",
+      "status": "CASING_MISMATCH",
+      "users": 28
+    },
+    {
+      "accountId": "2420003168",
+      "sqlAlias": "bwa",
+      "status": "CASING_MISMATCH",
+      "users": 5
+    },
+    {
+      "accountId": "2251587861",
+      "sqlAlias": "osigroup",
+      "status": "CASING_MISMATCH",
+      "users": 6
+    },
+    {
+      "accountId": "2480316076",
+      "sqlAlias": "CAO",
+      "status": "CASING_MISMATCH",
+      "users": 24
+    },
+    {
+      "accountId": "2424133991",
+      "sqlAlias": "nationalresearchcouncil",
+      "status": "CASING_MISMATCH",
+      "users": 12
+    },
+    {
+      "accountId": "4813586973",
+      "sqlAlias": "seepexuk",
+      "status": "CASING_MISMATCH",
+      "users": 2
+    },
+    {
+      "accountId": "5182584733",
+      "sqlAlias": "Podemcrane",
+      "status": "CASING_MISMATCH",
+      "users": 11
+    },
+    {
+      "accountId": "5790734870",
+      "sqlAlias": "ewingirrigation",
+      "status": "CASING_MISMATCH",
+      "users": 1
+    },
+    {
+      "accountId": "2424195144",
+      "sqlAlias": "manpowergroup",
+      "status": "CASING_MISMATCH",
+      "users": 8
+    },
+    {
+      "accountId": "16893881444",
+      "sqlAlias": "ascensia",
+      "status": "CASING_MISMATCH",
+      "users": 64
+    },
+    {
+      "accountId": "7902157319",
+      "sqlAlias": "M3Architectes",
+      "status": "CASING_MISMATCH",
+      "users": 56
+    },
+    {
+      "accountId": "42414274958",
+      "sqlAlias": "califiafarms",
+      "status": "CASING_MISMATCH",
+      "users": 7
+    },
+    {
+      "accountId": "21815876380",
+      "sqlAlias": "AlbertaCollegeOfPharmacy",
+      "status": "CASING_MISMATCH",
+      "users": 26
+    },
+    {
+      "accountId": "18122908013",
+      "sqlAlias": "180Systems1",
+      "status": "CASING_MISMATCH",
+      "users": 6
+    },
+    {
+      "accountId": "2424231723",
+      "sqlAlias": "concordia",
+      "status": "CASING_MISMATCH",
+      "users": 90
+    },
+    {
+      "accountId": "8825638174",
+      "sqlAlias": "EastPointengineering",
+      "status": "CASING_MISMATCH",
+      "users": 9
+    },
+    {
+      "accountId": "34670713126",
+      "sqlAlias": "UFV",
+      "status": "CASING_MISMATCH",
+      "users": 1
+    },
+    {
+      "accountId": "39587532915",
+      "sqlAlias": "RoperGreyell",
+      "status": "CASING_MISMATCH",
+      "users": 1
+    },
+    {
+      "accountId": "6074698879",
+      "sqlAlias": "vansonbourne",
+      "status": "CASING_MISMATCH",
+      "users": 26
+    },
+    {
+      "accountId": "36281535817",
+      "sqlAlias": "canadiancentreonsubstanceabuse",
+      "status": "CASING_MISMATCH",
+      "users": 2
+    },
+    {
+      "accountId": "31416187316",
+      "sqlAlias": "INNHotels",
+      "status": "CASING_MISMATCH",
+      "users": 10
+    },
+    {
+      "accountId": "15149076507",
+      "sqlAlias": "Nikitec",
+      "status": "CASING_MISMATCH",
+      "users": 19
+    },
+    {
+      "accountId": "5817905229",
+      "sqlAlias": "Sapphirehealth",
+      "status": "CASING_MISMATCH",
+      "users": 39
+    },
+    {
+      "accountId": "5200503609",
+      "sqlAlias": "engemovi",
+      "status": "CASING_MISMATCH",
+      "users": 11
+    },
+    {
+      "accountId": "2424170946",
+      "sqlAlias": "bmo1",
+      "status": "CASING_MISMATCH",
+      "users": 18
+    },
+    {
+      "accountId": "2424246027",
+      "sqlAlias": "lockton",
+      "status": "CASING_MISMATCH",
+      "users": 11
+    }
+  ],
+  "notInAmplitude": [
+    {
+      "accountId": "2233133094",
+      "sqlAlias": "DataNetIT",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2424171923",
+      "sqlAlias": "WaterlooRegionalPolice",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2424210050",
+      "sqlAlias": "scdeptmentalhealth",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2424139056",
+      "sqlAlias": "REthinkDevelopment",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2235911788",
+      "sqlAlias": "WUSM",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2221851471",
+      "sqlAlias": "peprndpmo",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "5790707252",
+      "sqlAlias": "SageResearchConsulting",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2233169590",
+      "sqlAlias": "GREINERBIOONE",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2420036280",
+      "sqlAlias": "RJY",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "30754458123",
+      "sqlAlias": "CanadasDrugAgency",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "8380402018",
+      "sqlAlias": "JAJKO",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "10177922318",
+      "sqlAlias": "CassaniaLLC",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "52360206519",
+      "sqlAlias": "MGroupeConseil",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "18753835527",
+      "sqlAlias": "Enable",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "32010951243",
+      "sqlAlias": "ridder",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "32026687080",
+      "sqlAlias": "QuestionPower",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "30952859180",
+      "sqlAlias": "PowersDesign",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "51288709048",
+      "sqlAlias": "TLC",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "27403578399",
+      "sqlAlias": "CastleHillAssociates1",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "29098622271",
+      "sqlAlias": "SmithRidgeConstruction",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "32895291732",
+      "sqlAlias": "ToroAluminum",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "17702410933",
+      "sqlAlias": "KinrossFabMachineInc",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "38436613486",
+      "sqlAlias": "momentumfamilystrategies",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "45007686828",
+      "sqlAlias": "ScarlettHouse",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "52932988193",
+      "sqlAlias": "uht",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "11382238343",
+      "sqlAlias": "IVSYS",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "25008859766",
+      "sqlAlias": "QSM",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "31521913702",
+      "sqlAlias": "SteadyDigital",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "31950804581",
+      "sqlAlias": "SJMcLeanConsultingPtyLtd",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2324358198",
+      "sqlAlias": "Paperlinx",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "3167685096",
+      "sqlAlias": "Linquest",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "20580590195",
+      "sqlAlias": "3545Consulting",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "21361495134",
+      "sqlAlias": "BohlerEngineering",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2423688441",
+      "sqlAlias": "EPdotNET",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2424158118",
+      "sqlAlias": "BASFprod",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    },
+    {
+      "accountId": "2424194606",
+      "sqlAlias": "sabreindustries1",
+      "status": "NOT_IN_AMPLITUDE",
+      "users": 0
+    }
+  ]
+}

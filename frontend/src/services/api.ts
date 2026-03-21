@@ -95,6 +95,15 @@ export async function updateAccountHidden(accountId: string, hidden: boolean): P
   if (!res.ok) { const t = await res.text(); throw new Error(t || `Update failed: ${res.status}`); }
 }
 
+export async function refreshAccountScore(accountId: string): Promise<{ score: number | null; tier: string; aliasStatus: string | null }> {
+  const res = await fetch(withCode(`${BASE_URL}/accounts/${encodeURIComponent(accountId)}`), {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(t || `Score refresh failed: ${res.status}`); }
+  return res.json();
+}
+
 // Admin user management
 export async function getUsers(): Promise<User[]> {
   const res = await fetch(withCode(`${BASE_URL}/users`), {

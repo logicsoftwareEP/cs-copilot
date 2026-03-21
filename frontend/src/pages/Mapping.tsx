@@ -65,42 +65,42 @@ export default function Mapping() {
     });
   }, [accounts, search, filterMapped]);
 
-  function startEdit(hubspotId: string, currentAlias: string | null) {
+  function startEdit(accountId: string, currentAlias: string | null) {
     setRowStates(prev => ({
       ...prev,
-      [hubspotId]: { editing: true, inputValue: currentAlias ?? '', saving: false, error: null },
+      [accountId]: { editing: true, inputValue: currentAlias ?? '', saving: false, error: null },
     }));
   }
 
-  function cancelEdit(hubspotId: string) {
+  function cancelEdit(accountId: string) {
     setRowStates(prev => {
       const next = { ...prev };
-      delete next[hubspotId];
+      delete next[accountId];
       return next;
     });
   }
 
   async function saveEdit(account: AccountSummary) {
-    const state = rowStates[account.hubspotId];
+    const state = rowStates[account.accountId];
     if (!state) return;
     const alias = state.inputValue.trim();
     if (!alias) return;
 
     setRowStates(prev => ({
       ...prev,
-      [account.hubspotId]: { ...state, saving: true, error: null },
+      [account.accountId]: { ...state, saving: true, error: null },
     }));
 
     try {
-      await upsertMapping(account.hubspotId, account.accountName, alias);
+      await upsertMapping(account.accountId, account.accountName, alias);
       setAccounts(prev =>
-        prev.map(a => a.hubspotId === account.hubspotId ? { ...a, amplitudeAlias: alias } : a)
+        prev.map(a => a.accountId === account.accountId ? { ...a, amplitudeAlias: alias } : a)
       );
-      cancelEdit(account.hubspotId);
+      cancelEdit(account.accountId);
     } catch (err: unknown) {
       setRowStates(prev => ({
         ...prev,
-        [account.hubspotId]: {
+        [account.accountId]: {
           ...state,
           saving: false,
           error: err instanceof Error ? err.message : 'Save failed — try again',
@@ -111,9 +111,9 @@ export default function Mapping() {
 
   async function handleDelete(account: AccountSummary) {
     try {
-      await deleteMapping(account.hubspotId);
+      await deleteMapping(account.accountId);
       setAccounts(prev =>
-        prev.map(a => a.hubspotId === account.hubspotId ? { ...a, amplitudeAlias: null } : a)
+        prev.map(a => a.accountId === account.accountId ? { ...a, amplitudeAlias: null } : a)
       );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Delete failed');
@@ -122,7 +122,7 @@ export default function Mapping() {
 
   function handleKeyDown(e: React.KeyboardEvent, account: AccountSummary) {
     if (e.key === 'Enter') saveEdit(account);
-    if (e.key === 'Escape') cancelEdit(account.hubspotId);
+    if (e.key === 'Escape') cancelEdit(account.accountId);
   }
 
   return (
@@ -273,12 +273,12 @@ export default function Mapping() {
               </thead>
               <tbody className="divide-y divide-bv-surface">
                 {filtered.map(account => {
-                  const state       = rowStates[account.hubspotId];
+                  const state       = rowStates[account.accountId];
                   const isUnmapped  = !account.amplitudeAlias;
 
                   return (
                     <tr
-                      key={account.hubspotId}
+                      key={account.accountId}
                       className={`transition-colors ${isUnmapped ? 'bg-white' : 'bg-white hover:bg-bv-surface'}`}
                     >
                       {/* Account name */}
@@ -300,7 +300,7 @@ export default function Mapping() {
                               value={state.inputValue}
                               onChange={e => setRowStates(prev => ({
                                 ...prev,
-                                [account.hubspotId]: { ...prev[account.hubspotId], inputValue: e.target.value },
+                                [account.accountId]: { ...prev[account.accountId], inputValue: e.target.value },
                               }))}
                               onKeyDown={e => handleKeyDown(e, account)}
                               disabled={state.saving}
@@ -313,7 +313,7 @@ export default function Mapping() {
                           </div>
                         ) : (
                           <button
-                            onClick={() => startEdit(account.hubspotId, account.amplitudeAlias)}
+                            onClick={() => startEdit(account.accountId, account.amplitudeAlias)}
                             className={`text-sm text-left rounded px-0 py-0 transition-colors group ${
                               isUnmapped
                                 ? 'text-bv-subtle italic'
@@ -338,7 +338,7 @@ export default function Mapping() {
                               {state.saving ? <><Spinner /> Saving…</> : 'Save'}
                             </button>
                             <button
-                              onClick={() => cancelEdit(account.hubspotId)}
+                              onClick={() => cancelEdit(account.accountId)}
                               disabled={state.saving}
                               className="text-xs text-bv-muted hover:text-bv-ink px-2 py-1 rounded-lg hover:bg-bv-surface transition-colors"
                             >
@@ -348,7 +348,7 @@ export default function Mapping() {
                         ) : (
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
-                              onClick={() => startEdit(account.hubspotId, account.amplitudeAlias)}
+                              onClick={() => startEdit(account.accountId, account.amplitudeAlias)}
                               className="text-bv-subtle hover:text-bv-primary p-1.5 rounded-lg hover:bg-bv-xlight transition-colors"
                               title="Edit alias"
                             >

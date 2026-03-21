@@ -18,16 +18,25 @@ const DEFAULT_FEATURE_EVENTS: FeatureEvent[] = [
   { category: 'Settings', eventType: 'Page Viewed - Account Settings' },
 ];
 
+export type DataSource = 'sql' | 'hubspot';
+
 export interface Config {
   storageConnectionString: string;
   tableAccounts: string;
   tableMapping: string;
   tableScores: string;
+  dataSource: DataSource;
+  // SQL Server (primary data source)
+  sqlConnectionString: string | null;
+  sqlLogin: string | null;
+  sqlPassword: string | null;
+  // HubSpot (disabled, retained for rollback)
   hubspotApiKey: string;
   amplitudeApiKey: string;
   amplitudeSecretKey: string;
   amplitudeAccountProperty: string;
   amplitudeFeatureEvents: FeatureEvent[];
+  tableUsers: string;
   zendeskSubdomain: string | null;
   zendeskEmail: string | null;
   zendeskApiToken: string | null;
@@ -40,6 +49,12 @@ function requireEnv(name: string): string {
 }
 
 export function getConfig(): Config {
+  const ds = (process.env.DATA_SOURCE ?? 'sql').toLowerCase();
+  if (!['sql', 'hubspot'].includes(ds)) {
+    throw new Error(`Invalid DATA_SOURCE: ${ds}. Must be 'sql' or 'hubspot'.`);
+  }
+  const dataSource = ds as DataSource;
+
   const featureEventsJson = process.env.AMPLITUDE_FEATURE_EVENTS;
   let featureEvents = DEFAULT_FEATURE_EVENTS;
   if (featureEventsJson) {
@@ -55,7 +70,12 @@ export function getConfig(): Config {
     tableAccounts: process.env.AZURE_STORAGE_TABLE_ACCOUNTS ?? 'accounts',
     tableMapping: process.env.AZURE_STORAGE_TABLE_MAPPING ?? 'amplitudemapping',
     tableScores: process.env.AZURE_STORAGE_TABLE_SCORES ?? 'churnscores',
-    hubspotApiKey: requireEnv('HUBSPOT_API_KEY'),
+    tableUsers: process.env.AZURE_STORAGE_TABLE_USERS ?? 'users',
+    dataSource,
+    sqlConnectionString: process.env.SQL_SERVER_DETAILS ?? null,
+    sqlLogin: process.env.SQL_LOGIN ?? null,
+    sqlPassword: process.env.SQL_PASSWORD ?? null,
+    hubspotApiKey: process.env.HUBSPOT_API_KEY ?? '',
     amplitudeApiKey: requireEnv('AMPLITUDE_API_KEY'),
     amplitudeSecretKey: requireEnv('AMPLITUDE_SECRET_KEY'),
     amplitudeAccountProperty: process.env.AMPLITUDE_ACCOUNT_PROPERTY ?? 'gp:alias',

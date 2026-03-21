@@ -5,129 +5,159 @@ export interface ZendeskTicketData {
   urgentCount: number;
 }
 
-interface ZendeskSearchResponse {
-  results: Array<{ priority?: string | null }>;
+interface ZendeskTicket {
+  id: number;
+  status: string;
+  priority: string | null;
+  created_at: string;
+  requester_id: number;
+}
+
+interface ZendeskUser {
+  id: number;
+  email: string;
+}
+
+interface ZendeskListResponse<T> {
+  tickets?: T[];
+  users?: T[];
   next_page: string | null;
   count?: number;
 }
 
-/** Maximum pages to fetch per query (each page = 100 results). */
-const MAX_PAGES = 5;
+/** Maximum pages to fetch (each page = 100 results). */
+const MAX_PAGES = 10;
 
-/**
- * Build Basic Auth header value for Zendesk API.
- * Uses the {email}/token:{apiToken} convention.
- */
 function buildBasicAuth(email: string, apiToken: string): string {
-  const credentials = `${email}/token:${apiToken}`;
-  return `Basic ${Buffer.from(credentials).toString('base64')}`;
+  return `Basic ${Buffer.from(`${email}/token:${apiToken}`).toString('base64')}`;
 }
 
 /**
- * Format a Date as YYYY-MM-DD for Zendesk search queries.
+ * Paginate through a Zendesk list endpoint.
  */
-function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * Fetch all results for a Zendesk search query, paginating up to MAX_PAGES.
- * Returns the raw ticket results array.
- */
-async function fetchSearchResults(
-  baseUrl: string,
-  query: string,
-  authHeader: string
-): Promise<Array<{ priority?: string | null }> | null> {
-  const allResults: Array<{ priority?: string | null }> = [];
-  let url: string | null =
-    `${baseUrl}/api/v2/search.json?query=${encodeURIComponent(query)}`;
+async function fetchAllPages<T>(
+  url: string,
+  authHeader: string,
+  key: 'tickets' | 'users'
+): Promise<T[] | null> {
+  const all: T[] = [];
+  let nextUrl: string | null = url;
   let page = 0;
 
-  while (url && page < MAX_PAGES) {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: authHeader,
-        'Content-Type': 'application/json',
-      },
+  while (nextUrl && page < MAX_PAGES) {
+    const response = await fetch(nextUrl, {
+      headers: { Authorization: authHeader },
     });
 
     if (!response.ok) {
-      console.warn(
-        `Zendesk search failed: ${response.status} ${response.statusText}`
-      );
+      console.warn(`Zendesk API ${response.status} ${response.statusText} for ${nextUrl}`);
       return null;
     }
 
-    const data = (await response.json()) as ZendeskSearchResponse;
-    allResults.push(...data.results);
-    url = data.next_page;
+    const data = (await response.json()) as ZendeskListResponse<T>;
+    const items = data[key] ?? [];
+    all.push(...items);
+    nextUrl = data.next_page;
     page++;
   }
 
-  return allResults;
+  return all;
+}
+
+function extractDomain(email: string): string {
+  const at = email.lastIndexOf('@');
+  return at > 0 ? email.substring(at + 1).toLowerCase() : '';
 }
 
 /**
- * Fetch Zendesk ticket data for a given domain.
+ * Fetch ALL open/pending/new tickets from Zendesk, then aggregate per requester domain.
+ * Returns a Map<domain, ZendeskTicketData>.
  *
- * Runs two queries:
- * 1. Recent tickets (last 30 days) -- for volume and severity counts
- * 2. Currently open/pending/new tickets -- for open count regardless of age
- *
- * Returns null on any error (null = "couldn't check", not zeros = "checked, clean").
+ * This approach:
+ * - Makes 2-3 API calls total (paginated) instead of 2 per domain
+ * - Avoids Zendesk search API quirks with domain matching
+ * - Works because open ticket volume is low (typically < 500)
  */
+export async function fetchAllZendeskTickets(
+  subdomain: string,
+  email: string,
+  apiToken: string
+): Promise<Map<string, ZendeskTicketData> | null> {
+  try {
+    const baseUrl = `https://${subdomain}.zendesk.com`;
+    const authHeader = buildBasicAuth(email, apiToken);
+
+    // Fetch all non-solved tickets (open, pending, new, hold)
+    const tickets = await fetchAllPages<ZendeskTicket>(
+      `${baseUrl}/api/v2/tickets.json?status=open,pending,new`,
+      authHeader,
+      'tickets'
+    );
+
+    if (tickets === null) return null;
+
+    // Collect unique requester IDs
+    const requesterIds = [...new Set(tickets.map(t => t.requester_id))];
+
+    // Batch-fetch requester users to get their emails
+    const requesterMap = new Map<number, string>(); // userId → domain
+    for (let i = 0; i < requesterIds.length; i += 100) {
+      const batch = requesterIds.slice(i, i + 100);
+      const ids = batch.join(',');
+      const users = await fetchAllPages<ZendeskUser>(
+        `${baseUrl}/api/v2/users/show_many.json?ids=${ids}`,
+        authHeader,
+        'users'
+      );
+      if (users) {
+        for (const u of users) {
+          requesterMap.set(u.id, extractDomain(u.email));
+        }
+      }
+    }
+
+    // Aggregate tickets by requester domain
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const domainData = new Map<string, ZendeskTicketData>();
+
+    for (const ticket of tickets) {
+      const domain = requesterMap.get(ticket.requester_id);
+      if (!domain) continue;
+
+      if (!domainData.has(domain)) {
+        domainData.set(domain, { ticketVolume: 0, openCount: 0, highPriorityCount: 0, urgentCount: 0 });
+      }
+      const data = domainData.get(domain)!;
+
+      // Open count (all statuses we fetched are open/pending/new)
+      data.openCount++;
+
+      // Volume = tickets created in the last 30 days
+      const created = new Date(ticket.created_at);
+      if (created >= thirtyDaysAgo) {
+        data.ticketVolume++;
+        if (ticket.priority === 'high') data.highPriorityCount++;
+        if (ticket.priority === 'urgent') data.urgentCount++;
+      }
+    }
+
+    return domainData;
+  } catch (error) {
+    console.warn('Error fetching Zendesk tickets:', error);
+    return null;
+  }
+}
+
+// Keep old function signature for backward compatibility with tests
 export async function fetchZendeskTickets(
   subdomain: string,
   email: string,
   apiToken: string,
   domain: string
 ): Promise<ZendeskTicketData | null> {
-  try {
-    const baseUrl = `https://${subdomain}.zendesk.com`;
-    const authHeader = buildBasicAuth(email, apiToken);
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const dateStr = toIsoDate(thirtyDaysAgo);
-
-    // Query 1: volume + severity (tickets created in the last 30 days)
-    const volumeQuery =
-      `type:ticket requester:*@${domain} created>${dateStr}`;
-
-    // Query 2: open tickets (regardless of creation date)
-    const openQuery =
-      `type:ticket requester:*@${domain} status:open status:pending status:new`;
-
-    const [volumeResults, openResults] = await Promise.all([
-      fetchSearchResults(baseUrl, volumeQuery, authHeader),
-      fetchSearchResults(baseUrl, openQuery, authHeader),
-    ]);
-
-    if (volumeResults === null || openResults === null) {
-      return null;
-    }
-
-    // Count severity from the volume query (last 30 days)
-    let highPriorityCount = 0;
-    let urgentCount = 0;
-    for (const ticket of volumeResults) {
-      if (ticket.priority === 'high') {
-        highPriorityCount++;
-      } else if (ticket.priority === 'urgent') {
-        urgentCount++;
-      }
-    }
-
-    return {
-      ticketVolume: volumeResults.length,
-      openCount: openResults.length,
-      highPriorityCount,
-      urgentCount,
-    };
-  } catch (error) {
-    console.warn('Error fetching Zendesk tickets:', error);
-    return null;
-  }
+  const allData = await fetchAllZendeskTickets(subdomain, email, apiToken);
+  if (allData === null) return null;
+  return allData.get(domain) ?? { ticketVolume: 0, openCount: 0, highPriorityCount: 0, urgentCount: 0 };
 }

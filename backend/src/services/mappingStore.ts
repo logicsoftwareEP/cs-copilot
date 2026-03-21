@@ -12,8 +12,8 @@ interface MappingEntity {
 
 function fromEntity(entity: MappingEntity): AmplitudeMapping {
   return {
-    hubspotId: entity.rowKey,
-    hubspotName: entity.hubspotName,
+    accountId: entity.rowKey,
+    accountName: entity.hubspotName, // legacy entity property name
     amplitudeAlias: entity.amplitudeAlias,
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt,
@@ -35,14 +35,14 @@ export class MappingStore {
     }
   }
 
-  async upsertMapping(hubspotId: string, hubspotName: string, amplitudeAlias: string): Promise<void> {
-    const existing = await this.getMapping(hubspotId);
+  async upsertMapping(accountId: string, accountName: string, amplitudeAlias: string): Promise<void> {
+    const existing = await this.getMapping(accountId);
     const now = new Date().toISOString();
 
     const entity: MappingEntity = {
       partitionKey: 'mapping',
-      rowKey: hubspotId,
-      hubspotName,
+      rowKey: accountId,
+      hubspotName: accountName, // legacy entity property name
       amplitudeAlias,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -62,9 +62,9 @@ export class MappingStore {
     return results;
   }
 
-  async getMapping(hubspotId: string): Promise<AmplitudeMapping | null> {
+  async getMapping(accountId: string): Promise<AmplitudeMapping | null> {
     try {
-      const entity = await this.client.getEntity<MappingEntity>('mapping', hubspotId);
+      const entity = await this.client.getEntity<MappingEntity>('mapping', accountId);
       return fromEntity(entity);
     } catch (err: any) {
       if (err?.statusCode === 404) return null;
@@ -72,7 +72,7 @@ export class MappingStore {
     }
   }
 
-  async deleteMapping(hubspotId: string): Promise<void> {
-    await this.client.deleteEntity('mapping', hubspotId);
+  async deleteMapping(accountId: string): Promise<void> {
+    await this.client.deleteEntity('mapping', accountId);
   }
 }

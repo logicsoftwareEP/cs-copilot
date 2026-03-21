@@ -93,7 +93,7 @@ describe('MappingStore', () => {
 
     const results = await store.listMappings();
     expect(results).toHaveLength(1);
-    expect(results[0].hubspotId).toBe('hs-123');
+    expect(results[0].accountId).toBe('hs-123');
     expect(results[0].amplitudeAlias).toBe('acme');
   });
 

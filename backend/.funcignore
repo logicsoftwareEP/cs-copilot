@@ -1,0 +1,11 @@
+src/
+*.ts
+tsconfig.json
+jest.config.*
+local.settings.json
+.git/
+.claude/
+__tests__/
+*.test.*
+*.spec.*
+.vscode/

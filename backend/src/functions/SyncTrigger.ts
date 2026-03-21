@@ -1,10 +1,11 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { runSync } from './SyncRunner';
+import { authenticateRequest, requireRole, AuthError } from '../auth';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-User-Email',
 };
 
 async function triggerSync(
@@ -14,6 +15,9 @@ async function triggerSync(
   if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
 
   try {
+    const user = await authenticateRequest(req);
+    requireRole(user, 'admin');
+
     const result = await runSync(context);
     return {
       status: 200,
@@ -21,6 +25,7 @@ async function triggerSync(
       body: JSON.stringify({ status: 'ok', result }),
     };
   } catch (err: any) {
+    if (err instanceof AuthError) return { status: err.status, headers: CORS_HEADERS, body: err.message };
     context.error('Sync failed:', err);
     return {
       status: 500,

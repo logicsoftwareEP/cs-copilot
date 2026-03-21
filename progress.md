@@ -1,6 +1,6 @@
 # CS Copilot - Progress
 
-## Status: Live — Dark theme UI + MAU trend + Zendesk penalty + Top 10 review (2026-03-15)
+## Status: Live — SQL data source + Auth + Zendesk bulk sync (2026-03-17)
 
 **Spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 **Plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
@@ -9,13 +9,9 @@
 
 ## What's Left
 
-All features deployed. Remaining setup:
-
-1. Set Zendesk env vars: `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN` (subdomain already set)
-2. Re-import ARR values from CSV (lost during stash restore — guard now in place)
-3. Add more Amplitude alias mappings (currently 6 of 267 accounts mapped)
-4. Set licence counts for mapped accounts to enable utilisation scoring
-5. See `TODOS.md` for deferred items (sentiment analysis, Slack alerts, domain editing)
+1. Add remaining CSM users via `/admin` page
+2. Verify all 32 alias casing corrections are scoring correctly (next nightly sync)
+3. See `TODOS.md` for deferred items (sentiment analysis, Slack alerts)
 
 ---
 
@@ -43,12 +39,44 @@ All features deployed. Remaining setup:
 
 ---
 
-## Validation Snapshot (2026-03-15)
+## Validation Snapshot (2026-03-17)
 
 - Backend TypeScript build: **clean**
-- Backend tests: **96/96 passing** across 7 suites
-- Frontend TypeScript + Vite build: **clean** (216 kB JS, 22 kB CSS)
+- Backend tests: **112/112 passing** across 9 suites
+- Frontend TypeScript + Vite build: **clean** (226 kB JS, 23 kB CSS)
 - Backend + frontend deployed to Azure
+- 268 accounts, 257 aliases (195 scoring), 27 with Zendesk penalties
+
+### 2026-03-17 — SQL Server data source + Auth + Zendesk bulk sync
+
+**SQL Server migration:**
+- Data source switched from HubSpot to `[analytics].[ClientsOverview]` SQL view
+- Types renamed: `HubspotAccount` → `Account`, `hubspotId` → `accountId` (18 files)
+- `sqlClient.ts`: connection pooling, retry logic, field mapping, domain extraction from email
+- 257 Amplitude aliases auto-synced from SQL (was 6 manual), 265 licence counts
+- HubSpot code disabled but retained (`DATA_SOURCE=hubspot` to rollback)
+- 32 alias casing corrections applied (Amplitude `is` filter is case-sensitive, SQL collation is CI)
+- Alias sync changed: only creates new mappings, never overwrites (preserves casing corrections)
+
+**Zendesk bulk sync:**
+- Replaced per-domain search (500+ API calls) with bulk ticket fetch (2-3 calls)
+- Fetches ALL open/pending/new tickets, batch-fetches requesters, aggregates by email domain
+- Fixes Zendesk search API not finding tickets by domain (e.g., sesconsulting.com)
+- 27 accounts now have Zendesk penalties
+
+**Authentication & user management:**
+- Azure SWA built-in Entra ID (pre-configured `aad` provider, Standard plan)
+- Three roles: Admin, Supervisor, CSM
+- `users` table in Azure Table Storage (email → displayName + role)
+- `auth.ts`: `authenticateRequest()` reads `x-ms-client-principal` or `X-User-Email` header, validates against users table
+- `UsersApi.ts`: `GET /api/me` + admin CRUD (`GET/POST/DELETE /api/users`)
+- Last-admin guard: cannot delete or demote the last admin
+- CSM filtering: accounts filtered by `csmName` matching user's `displayName` (case-insensitive)
+- Admin page (`/admin`): user management UI with add/edit/delete
+- Portfolio: role-aware UI (CSMs: no sync/edit, Supervisors: no sync/user-mgmt, Admins: full access)
+- `AuthContext.tsx`: checks `/.auth/me` → `GET /api/me` → renders app or "Access denied"
+- Bootstrap: `vadim@logicsoftware.net` seeded as admin
+- `staticwebapp.config.json`: requires `authenticated` role, blocks GitHub/Twitter providers
 
 ### 2026-03-15 — Dark theme UI + scoring improvements + Zendesk penalty
 - **Dark theme frontend** restored with custom `obs-*` Tailwind palette, dark/light theme toggle (localStorage persisted)
@@ -90,9 +118,11 @@ All features deployed. Remaining setup:
 
 ## Architecture Summary
 
-**Azure Functions (SyncRunner)** fetches HubSpot companies (with domain) + Zendesk ticket data per domain + Amplitude signals → computes health scores with Zendesk penalty → writes to **Azure Table Storage** (3 tables: `accounts`, `amplitudemapping`, `churnscores`) → **Azure Functions** read API + mapping CRUD → **React frontend** (Portfolio + Mapping pages).
+**Azure SWA (Entra ID auth)** → **React frontend** (role-based UI) → **Azure Functions** (auth middleware + read API + mapping CRUD) → **Azure Table Storage** (4 tables: `accounts`, `amplitudemapping`, `churnscores`, `users`).
 
-Sync runs: (a) nightly timer trigger at 2 AM UTC, (b) on-demand via `POST /api/sync` button in the frontend.
+**SyncRunner** fetches SQL Server accounts + Zendesk bulk tickets + Amplitude signals → computes health scores → writes to Table Storage. Aliases and licences auto-synced from SQL.
+
+Sync runs: (a) nightly timer trigger at 2 AM UTC, (b) on-demand via `POST /api/sync` (admin only).
 
 **Health Score:** DAU/WAU trend (0–40 pts) + Licence utilisation MAU÷seats (0–35 pts) + Feature breadth (0–25 pts) − Zendesk penalty (0 to -20 pts). Normalised to 65 when licences not yet entered, 100 when set.
 
