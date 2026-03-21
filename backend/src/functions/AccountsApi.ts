@@ -202,6 +202,7 @@ async function getAccount(
             computedAt: new Date().toISOString(),
             zendeskPenalty: penalty ? penalty.totalPenalty : null,
             zendeskDetails: penalty ? JSON.stringify(penalty) : null,
+            intercomPenalty: null, intercomBonus: null, intercomDetails: null,
             aliasStatus: 'not-found',
           });
           return {
@@ -249,6 +250,7 @@ async function getAccount(
         computedAt: new Date().toISOString(),
         zendeskPenalty: adjusted.zendeskPenalty,
         zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
+        intercomPenalty: null, intercomBonus: null, intercomDetails: null,
         aliasStatus: 'valid',
       });
 

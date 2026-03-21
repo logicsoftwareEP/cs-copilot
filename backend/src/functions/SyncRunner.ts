@@ -210,6 +210,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           computedAt: new Date().toISOString(),
           zendeskPenalty: penalty ? penalty.totalPenalty : null,
           zendeskDetails: penalty ? JSON.stringify(penalty) : null,
+          intercomPenalty: null, intercomBonus: null, intercomDetails: null,
           aliasStatus: null,
         });
         continue;
@@ -250,6 +251,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
               computedAt: new Date().toISOString(),
               zendeskPenalty: penalty ? penalty.totalPenalty : null,
               zendeskDetails: penalty ? JSON.stringify(penalty) : null,
+              intercomPenalty: null, intercomBonus: null, intercomDetails: null,
               aliasStatus: 'not-found',
             });
             log(`Alias not found in Amplitude: ${amplitudeAlias} (${company.accountName})`);
@@ -300,6 +302,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           computedAt: new Date().toISOString(),
           zendeskPenalty: adjusted.zendeskPenalty,
           zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
+          intercomPenalty: null, intercomBonus: null, intercomDetails: null,
           aliasStatus: 'valid',
         });
 
@@ -325,6 +328,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           computedAt: new Date().toISOString(),
           zendeskPenalty: null,
           zendeskDetails: null,
+          intercomPenalty: null, intercomBonus: null, intercomDetails: null,
           aliasStatus: 'valid',
         });
       }
