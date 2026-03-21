@@ -10,20 +10,24 @@ jest.mock('../../clients/hubspotClient');
 jest.mock('../../clients/sqlClient');
 jest.mock('../../clients/amplitudeClient');
 jest.mock('../../clients/zendeskClient');
+jest.mock('../../clients/intercomClient');
 jest.mock('../../services/accountStore');
 jest.mock('../../services/mappingStore');
 jest.mock('../../services/scoreStore');
 jest.mock('../../services/userStore');
+jest.mock('../../services/intercomStore');
 
 import { runSync } from '../../functions/SyncRunner';
 import { searchActiveCompanies } from '../../clients/hubspotClient';
 import { fetchAccountsFromSql } from '../../clients/sqlClient';
 import { fetchSignals, validateAlias } from '../../clients/amplitudeClient';
 import { fetchAllZendeskTickets } from '../../clients/zendeskClient';
+import { fetchIntercomConversations } from '../../clients/intercomClient';
 import { AccountStore } from '../../services/accountStore';
 import { MappingStore } from '../../services/mappingStore';
 import { ScoreStore } from '../../services/scoreStore';
 import { UserStore } from '../../services/userStore';
+import { IntercomStore } from '../../services/intercomStore';
 import { Account } from '../../types';
 import { AmplitudeSignals } from '../../clients/amplitudeClient';
 import { ZendeskTicketData } from '../../clients/zendeskClient';
@@ -41,12 +45,14 @@ const mockSearchActiveCompanies = searchActiveCompanies as jest.MockedFunction<t
 const mockFetchAccountsFromSql = fetchAccountsFromSql as jest.MockedFunction<typeof fetchAccountsFromSql>;
 const mockFetchSignals = fetchSignals as jest.MockedFunction<typeof fetchSignals>;
 const mockFetchAllZendeskTickets = fetchAllZendeskTickets as jest.MockedFunction<typeof fetchAllZendeskTickets>;
+const mockFetchIntercom = fetchIntercomConversations as jest.MockedFunction<typeof fetchIntercomConversations>;
 const mockValidateAlias = jest.requireMock('../../clients/amplitudeClient').validateAlias as jest.Mock;
 
 const MockAccountStore = AccountStore as jest.MockedClass<typeof AccountStore>;
 const MockMappingStore = MappingStore as jest.MockedClass<typeof MappingStore>;
 const MockScoreStore = ScoreStore as jest.MockedClass<typeof ScoreStore>;
 const MockUserStore = UserStore as jest.MockedClass<typeof UserStore>;
+const MockIntercomStore = IntercomStore as jest.MockedClass<typeof IntercomStore>;
 
 // HubSpot does not carry licenses — that is entered manually after sync
 const COMPANY_A: Account = {
@@ -145,12 +151,25 @@ function setupStoreMocks(opts: {
     deleteUser: jest.fn(),
   } as any));
 
+  MockIntercomStore.mockImplementation(() => ({
+    ensureTable: jest.fn().mockResolvedValue(undefined),
+    upsertSnapshot: jest.fn().mockResolvedValue(undefined),
+    getSnapshots: jest.fn().mockResolvedValue([]),
+    aggregate: jest.fn().mockReturnValue({ conversationVolume: 0, openCount: 0, avgResponseTime: 0, quickResolutions: 0, aiHandled: 0 }),
+    cleanup: jest.fn().mockResolvedValue(0),
+  } as any));
+
   return { upsertAccount, upsertScore, ensureTable, listMappings, getAllScoresForDate };
 }
+
+function enableIntercomConfig() { process.env.INTERCOM_ACCESS_TOKEN = 'ic-token-123'; }
+function disableIntercomConfig() { delete process.env.INTERCOM_ACCESS_TOKEN; }
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockValidateAlias.mockResolvedValue(true); // default: alias is valid
+  mockFetchIntercom.mockResolvedValue(new Map()); // default: empty
+  disableIntercomConfig(); // default: Intercom disabled
 });
 
 describe('runSync', () => {
@@ -637,5 +656,98 @@ describe('runSync', () => {
         aliasStatus: 'valid',
       })
     );
+  });
+
+  // ── Intercom integration tests ─────────────────────────────────────────
+
+  it('Intercom skipped when not configured', async () => {
+    disableIntercomConfig();
+
+    setupStoreMocks({
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+
+    const result = await runSync();
+
+    expect(result.intercomFetched).toBe(0);
+    expect(mockFetchIntercom).not.toHaveBeenCalled();
+  });
+
+  it('Intercom data fetched and scored when configured', async () => {
+    enableIntercomConfig();
+    const companyWithDomain: Account = { ...COMPANY_A, domain: 'alpha.com' };
+
+    const { upsertScore } = setupStoreMocks({
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      storedAccounts: [companyWithDomain],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([companyWithDomain]);
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+    mockFetchAllZendeskTickets.mockResolvedValue(null);
+
+    // Intercom returns snapshot data for alpha.com
+    const snapshot = {
+      conversationVolume: 5,
+      openCount: 2,
+      avgResponseTime: 3600,
+      quickResolutions: 3,
+      aiHandled: 2,
+      totalResponseTime: 18000,
+      responseCount: 5,
+    };
+    mockFetchIntercom.mockResolvedValue(new Map([['alpha.com', snapshot]]));
+
+    // Mock IntercomStore aggregate to return meaningful data
+    const aggregated = {
+      conversationVolume: 5,
+      openCount: 2,
+      avgResponseTime: 3600,
+      quickResolutions: 3,
+      aiHandled: 2,
+    };
+    MockIntercomStore.mockImplementation(() => ({
+      ensureTable: jest.fn().mockResolvedValue(undefined),
+      upsertSnapshot: jest.fn().mockResolvedValue(undefined),
+      getSnapshots: jest.fn().mockResolvedValue([{ ...snapshot, date: '2026-03-21' }]),
+      aggregate: jest.fn().mockReturnValue(aggregated),
+      cleanup: jest.fn().mockResolvedValue(0),
+    } as any));
+
+    const result = await runSync();
+
+    expect(result.intercomFetched).toBe(1);
+    expect(mockFetchIntercom).toHaveBeenCalledWith('ic-token-123', 36);
+
+    const scoreCall = upsertScore.mock.calls[0][0];
+    // applyAllPenalties was used — intercom penalty/bonus should be populated
+    // openCount=2 → penalty -2, quickResolutions=3 → bonus +2, aiHandled=2 → bonus +1, engagement (vol>=3, open<=1? no open=2) → 0
+    // Total penalty: -2, total bonus: min(10, 2+1+0)=3
+    expect(scoreCall.intercomPenalty).toBe(-2);
+    expect(scoreCall.intercomBonus).toBe(3);
+    expect(scoreCall.intercomDetails).toBeTruthy();
+
+    disableIntercomConfig();
+  });
+
+  it('intercomFetched in result when Intercom auth fails', async () => {
+    enableIntercomConfig();
+
+    setupStoreMocks({
+      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+    mockFetchIntercom.mockResolvedValue(null); // auth failure
+
+    const result = await runSync();
+
+    expect(result.intercomFetched).toBe(0);
+
+    disableIntercomConfig();
   });
 });

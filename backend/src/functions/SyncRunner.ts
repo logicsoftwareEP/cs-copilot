@@ -9,7 +9,9 @@ import { fetchAccountsFromSql, SqlFetchResult } from '../clients/sqlClient';
 import { fetchSignals, validateAlias, AmplitudeSignals } from '../clients/amplitudeClient';
 import { Account } from '../types';
 import { fetchAllZendeskTickets, ZendeskTicketData } from '../clients/zendeskClient';
-import { computeScore, applyZendeskPenalty, computeZendeskPenalty } from '../services/healthScoreService';
+import { fetchIntercomConversations } from '../clients/intercomClient';
+import { IntercomStore, IntercomAggregated } from '../services/intercomStore';
+import { computeScore, applyAllPenalties, computeZendeskPenalty, computeIntercomPenalty, computeIntercomBonus } from '../services/healthScoreService';
 
 function isAllZeroSignals(signals: AmplitudeSignals): boolean {
   return (
@@ -25,6 +27,7 @@ export interface SyncResult {
   scored: number;   // accounts with a score computed
   failed: number;   // accounts where Amplitude fetch failed
   zendeskFetched: number; // domains with Zendesk data fetched
+  intercomFetched: number; // domains with Intercom data fetched
   errors: string[]; // error messages
 }
 
@@ -171,6 +174,45 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
       log('Zendesk: disabled (missing config)');
     }
 
+    // ── Intercom fetch phase ──────────────────────────────────────────────────
+    const intercomEnabled = !!config.intercomAccessToken;
+    const intercomStore = new IntercomStore(config.storageConnectionString);
+    let intercomDomainMap = new Map<string, IntercomAggregated>();
+    let intercomFetched = 0;
+
+    if (intercomEnabled) {
+      await intercomStore.ensureTable();
+      const todayISOIntercom = new Date().toISOString().slice(0, 10);
+      const snapshots = await fetchIntercomConversations(config.intercomAccessToken!, 36);
+      if (snapshots === null) {
+        log('Intercom: fetch failed (possible auth failure)');
+      } else {
+        for (const [domain, data] of snapshots) {
+          await intercomStore.upsertSnapshot(domain, todayISOIntercom, data);
+        }
+        log(`Intercom: stored snapshots for ${snapshots.size} domains`);
+
+        // Aggregate last 30 days per domain
+        const allDomains = new Set<string>();
+        for (const [domain] of snapshots) allDomains.add(domain);
+        for (const company of companies) {
+          const d = storedMap.get(company.accountId)?.domain ?? company.domain;
+          if (d) allDomains.add(d);
+        }
+        for (const domain of allDomains) {
+          const rows = await intercomStore.getSnapshots(domain, 30);
+          const aggregated = intercomStore.aggregate(rows);
+          if (aggregated) intercomDomainMap.set(domain, aggregated);
+        }
+        intercomFetched = intercomDomainMap.size;
+        log(`Intercom: ${intercomFetched} domains with 30d aggregated data`);
+      }
+      const deleted = await intercomStore.cleanup(35);
+      if (deleted > 0) log(`Intercom: cleaned up ${deleted} old snapshot rows`);
+    } else {
+      log('Intercom: disabled (missing config)');
+    }
+
     // Load yesterday's scores for delta calculation
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -263,9 +305,13 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         const licenses = storedMap.get(company.accountId)?.licenses ?? null;
         const baseResult = computeScore(signals, licenses);
 
-        // Apply Zendesk penalty
-        const adjusted = applyZendeskPenalty(baseResult, zendeskData);
+        // Apply Zendesk + Intercom penalties/bonuses
+        const accountDomainForIntercom = storedMap.get(company.accountId)?.domain ?? company.domain ?? null;
+        const intercomData = accountDomainForIntercom ? intercomDomainMap.get(accountDomainForIntercom) ?? null : null;
+        const adjusted = applyAllPenalties(baseResult, zendeskData, intercomData);
         const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
+        const intercomPenaltyDetails = intercomData ? computeIntercomPenalty(intercomData) : null;
+        const intercomBonusDetails = intercomData ? computeIntercomBonus(intercomData) : null;
 
         // Build feature details map
         let featureDetailsJson: string | null = null;
@@ -302,7 +348,9 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           computedAt: new Date().toISOString(),
           zendeskPenalty: adjusted.zendeskPenalty,
           zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
-          intercomPenalty: null, intercomBonus: null, intercomDetails: null,
+          intercomPenalty: adjusted.intercomPenalty,
+          intercomBonus: adjusted.intercomBonus,
+          intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyDetails, ...intercomBonusDetails, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
           aliasStatus: 'valid',
         });
 
@@ -334,10 +382,10 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
       }
     }
 
-    return { synced: companies.length, scored, failed, zendeskFetched, errors };
+    return { synced: companies.length, scored, failed, zendeskFetched, intercomFetched, errors };
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    return { synced: 0, scored: 0, failed: 0, zendeskFetched: 0, errors: [msg] };
+    return { synced: 0, scored: 0, failed: 0, zendeskFetched: 0, intercomFetched: 0, errors: [msg] };
   }
 }
 
