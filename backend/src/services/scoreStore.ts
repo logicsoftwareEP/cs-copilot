@@ -15,6 +15,9 @@ interface ScoreEntity {
   computedAt: string;
   zendeskPenalty: number | null;
   zendeskDetails: string | null;
+  intercomPenalty: number | null;
+  intercomBonus: number | null;
+  intercomDetails: string | null;
   aliasStatus?: string | null;
 }
 
@@ -33,6 +36,9 @@ function fromEntity(entity: ScoreEntity): ChurnScore {
     computedAt: entity.computedAt,
     zendeskPenalty: entity.zendeskPenalty ?? null,
     zendeskDetails: entity.zendeskDetails ?? null,
+    intercomPenalty: entity.intercomPenalty ?? null,
+    intercomBonus: entity.intercomBonus ?? null,
+    intercomDetails: entity.intercomDetails ?? null,
     aliasStatus: (entity.aliasStatus as 'valid' | 'not-found' | null) ?? null,
   };
 }
@@ -119,6 +125,9 @@ export class ScoreStore {
       computedAt: score.computedAt,
       zendeskPenalty: score.zendeskPenalty,
       zendeskDetails: score.zendeskDetails,
+      intercomPenalty: score.intercomPenalty,
+      intercomBonus: score.intercomBonus,
+      intercomDetails: score.intercomDetails,
       aliasStatus: score.aliasStatus,
     }, 'Replace');
   }
