@@ -40,6 +40,7 @@ export interface Config {
   zendeskSubdomain: string | null;
   zendeskEmail: string | null;
   zendeskApiToken: string | null;
+  intercomAccessToken: string | null;
 }
 
 function requireEnv(name: string): string {
@@ -83,5 +84,6 @@ export function getConfig(): Config {
     zendeskSubdomain: process.env.ZENDESK_SUBDOMAIN ?? null,
     zendeskEmail: process.env.ZENDESK_EMAIL ?? null,
     zendeskApiToken: process.env.ZENDESK_API_TOKEN ?? null,
+    intercomAccessToken: process.env.INTERCOM_ACCESS_TOKEN ?? null,
   };
 }
