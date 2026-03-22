@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Portfolio from './pages/Portfolio';
 import Admin from './pages/Admin';
+import Troubleshoot from './pages/Troubleshoot';
 import { useAuth } from './contexts/AuthContext';
 
 export default function App() {
@@ -12,6 +13,10 @@ export default function App() {
       <Route
         path="/admin"
         element={user?.role === 'admin' ? <Admin /> : <Navigate to="/" replace />}
+      />
+      <Route
+        path="/troubleshoot"
+        element={user?.role === 'admin' ? <Troubleshoot /> : <Navigate to="/" replace />}
       />
       <Route path="/mapping" element={<Navigate to="/" replace />} />
     </Routes>
