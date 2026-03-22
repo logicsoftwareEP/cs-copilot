@@ -31,6 +31,20 @@ export interface ZendeskDetails {
   urgentCount: number;
 }
 
+export interface IntercomDetails {
+  openPenalty: number;
+  slowPenalty: number;
+  openCount: number;
+  avgResponseTime: number | null;
+  quickResolutionBonus: number;
+  quickResolutions: number;
+  aiBonus: number;
+  aiHandled: number;
+  engagementBonus: number;
+  conversationVolume: number;
+  totalBonus: number;
+}
+
 export interface ScoreBreakdown {
   dauWauTrend: number | null;
   monthlyActiveUsers: number | null;
@@ -39,6 +53,9 @@ export interface ScoreBreakdown {
   featureDetails: Record<string, boolean> | null;
   zendeskPenalty: number | null;
   zendeskDetails: ZendeskDetails | null;
+  intercomPenalty: number | null;
+  intercomBonus: number | null;
+  intercomDetails: IntercomDetails | null;
 }
 
 export interface AccountDetail extends AccountSummary {

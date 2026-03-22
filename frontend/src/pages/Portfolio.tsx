@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses, updateAccountArr, updateAccountHidden, upsertMapping, deleteMapping, refreshAccountScore } from '../services/api';
-import { AccountSummary, AccountDetail, HealthTier, ChurnScore } from '../types';
+import { AccountSummary, AccountDetail, HealthTier, ChurnScore, IntercomDetails } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -73,6 +73,37 @@ function zendeskPenaltyInfo(penalty: number | null): { pts: string; label: strin
   if (penalty === 0) return { pts: '0', label: 'No issues', detail: 'No significant support burden', hint: 'Clean — no ticket penalty applied.' };
   if (penalty >= -9) return { pts: String(penalty), label: 'Minor', detail: `${penalty} point deduction`, hint: 'Some support activity detected.' };
   return { pts: String(penalty), label: 'High', detail: `${penalty} point deduction`, hint: 'Significant support burden. Review tickets.' };
+}
+
+function intercomPenaltyInfo(details: IntercomDetails | null): { pts: string; label: string; detail: string; hint: string | null } {
+  if (!details) return { pts: 'N/A', label: 'No data', detail: 'Intercom not configured or no domain', hint: null };
+  const penalty = (details.openPenalty ?? 0) + (details.slowPenalty ?? 0);
+  if (penalty === 0) return { pts: '0', label: 'No issues', detail: 'No open conversation burden', hint: 'Clean — no Intercom penalty applied.' };
+  const parts: string[] = [];
+  if (details.openCount > 0) parts.push(`${details.openCount} open`);
+  if (details.slowPenalty < 0) parts.push('slow responses');
+  return {
+    pts: String(penalty),
+    label: parts.join(', '),
+    detail: `Open: ${details.openCount} · Avg response: ${Math.round((details.avgResponseTime ?? 0) / 3600)}h`,
+    hint: penalty <= -8 ? 'High support burden from Intercom conversations.' : 'Some open conversations — monitor closely.',
+  };
+}
+
+function intercomBonusInfo(details: IntercomDetails | null): { pts: string; label: string; detail: string; hint: string | null } {
+  if (!details) return { pts: 'N/A', label: 'No data', detail: 'Intercom not configured', hint: null };
+  const bonus = details.totalBonus ?? 0;
+  if (bonus === 0) return { pts: '0', label: 'No engagement', detail: 'No qualifying engagement signals detected', hint: null };
+  const parts: string[] = [];
+  if (details.quickResolutionBonus > 0) parts.push(`${details.quickResolutions} quick resolutions`);
+  if (details.aiBonus > 0) parts.push(`${details.aiHandled} AI-handled`);
+  if (details.engagementBonus > 0) parts.push('active & not stuck');
+  return {
+    pts: `+${bonus}`,
+    label: parts.join(', '),
+    detail: `Quick: ${details.quickResolutions ?? 0} · AI: ${details.aiHandled ?? 0} · Volume: ${details.conversationVolume ?? 0}`,
+    hint: bonus >= 7 ? 'Highly engaged — strong product adoption signals.' : 'Some positive engagement signals detected.',
+  };
 }
 
 // ─── Utility helpers ──────────────────────────────────────────────────────────
@@ -264,8 +295,12 @@ function DetailPanel({ summary, onClose, onScoreRefreshed }: { summary: AccountS
   const license = licenseInfo(bd?.monthlyActiveUsers ?? null, summary.licenses);
   const fb      = featureBreadthInfo(bd?.featuresUsed ?? null);
   const featureDetails = bd?.featureDetails ?? null;
-  const zd      = zendeskPenaltyInfo(bd?.zendeskPenalty ?? null);
+  const zd        = zendeskPenaltyInfo(bd?.zendeskPenalty ?? null);
+  const icPenalty = intercomPenaltyInfo(bd?.intercomDetails ?? null);
+  const icBonus   = intercomBonusInfo(bd?.intercomDetails ?? null);
   const hasLicenses = summary.licenses !== null;
+  const intercomBonus = bd?.intercomBonus ?? 0;
+  const scoreOver100 = summary.score !== null && summary.score > 100 ? summary.score - 100 : 0;
   const renewal = renewalInfo(summary.renewalDate);
 
   return (
@@ -323,8 +358,11 @@ function DetailPanel({ summary, onClose, onScoreRefreshed }: { summary: AccountS
                 {summary.score !== null ? (
                   <>
                     <p className="text-[40px] font-bold leading-none font-mono score-glow" style={{ color: tierCfg.color }}>
-                      {summary.score}
+                      {Math.min(summary.score, 100)}
                       <span className="text-[14px] font-normal text-obs-ghost ml-1">/100</span>
+                      {scoreOver100 > 0 && (
+                        <span className="text-[14px] font-semibold text-tier-healthy ml-1.5">+{scoreOver100}</span>
+                      )}
                     </p>
                     {summary.scoreDelta !== null && summary.scoreDelta !== 0 && (
                       <p className={`text-[14px] font-semibold font-mono mt-1.5 ${summary.scoreDelta > 0 ? 'text-tier-healthy' : 'text-tier-critical'}`}>
@@ -395,12 +433,12 @@ function DetailPanel({ summary, onClose, onScoreRefreshed }: { summary: AccountS
                     );
                   })}
 
-                  {/* Zendesk Support Load card */}
+                  {/* Zendesk Support card */}
                   {bd && (
                     <div className="bg-obs-card rounded-lg px-4 py-3 border border-obs-edge">
                       <div className="flex items-baseline justify-between">
                         <div>
-                          <p className="text-[14px] font-semibold text-obs-bright">Support Load</p>
+                          <p className="text-[14px] font-semibold text-obs-bright">Zendesk Support</p>
                           <p className="text-[14px] text-obs-ghost mt-0.5">Zendesk ticket penalty</p>
                         </div>
                         <p className="text-[16px] font-bold font-mono flex-shrink-0 ml-3" style={{
@@ -421,6 +459,56 @@ function DetailPanel({ summary, onClose, onScoreRefreshed }: { summary: AccountS
                         </p>
                       )}
                     </div>
+                  )}
+
+                  {/* Intercom Support card */}
+                  {bd && (
+                    <div className="bg-obs-card rounded-lg px-4 py-3 border border-obs-edge">
+                      <div className="flex items-baseline justify-between">
+                        <div>
+                          <p className="text-[14px] font-semibold text-obs-bright">Intercom Support</p>
+                          <p className="text-[14px] text-obs-ghost mt-0.5">Intercom conversation penalty</p>
+                        </div>
+                        <p className="text-[16px] font-bold font-mono flex-shrink-0 ml-3" style={{
+                          color: icPenalty.pts === 'N/A' ? '#5A6170' : icPenalty.pts === '0' ? '#34D399' : Number(icPenalty.pts) >= -4 ? '#FBBF24' : '#F87171'
+                        }}>
+                          {icPenalty.pts}
+                          {icPenalty.pts !== 'N/A' && <span className="text-obs-ghost font-normal text-[14px]">/0</span>}
+                        </p>
+                      </div>
+                      <p className="text-[14px] text-obs-dim mt-2 leading-relaxed">
+                        <span className="font-medium text-obs-text">{icPenalty.label}</span>
+                        {' — '}{icPenalty.detail}
+                      </p>
+                      {icPenalty.hint && <p className="text-[14px] text-obs-ghost mt-0.5 leading-relaxed">{icPenalty.hint}</p>}
+                    </div>
+                  )}
+
+                  {/* Intercom Engagement card */}
+                  {bd && (
+                    <div className="bg-obs-card rounded-lg px-4 py-3 border border-obs-edge">
+                      <div className="flex items-baseline justify-between">
+                        <div>
+                          <p className="text-[14px] font-semibold text-obs-bright">Intercom Engagement</p>
+                          <p className="text-[14px] text-obs-ghost mt-0.5">Conversation quality bonus</p>
+                        </div>
+                        <p className="text-[16px] font-bold font-mono flex-shrink-0 ml-3" style={{
+                          color: icBonus.pts === 'N/A' ? '#5A6170' : icBonus.pts === '0' ? '#8891A0' : intercomBonus >= 7 ? '#34D399' : '#7C6AFF'
+                        }}>
+                          {icBonus.pts}
+                        </p>
+                      </div>
+                      <p className="text-[14px] text-obs-dim mt-2 leading-relaxed">
+                        <span className="font-medium text-obs-text">{icBonus.label}</span>
+                        {' — '}{icBonus.detail}
+                      </p>
+                      {icBonus.hint && <p className="text-[14px] text-obs-ghost mt-0.5 leading-relaxed">{icBonus.hint}</p>}
+                    </div>
+                  )}
+
+                  {/* Combined penalty cap note */}
+                  {bd?.zendeskPenalty != null && bd?.intercomPenalty != null && (
+                    <p className="text-[12px] text-obs-ghost italic px-1">Combined support penalty capped at -20</p>
                   )}
 
                   {/* Feature Detail Grid */}
@@ -455,10 +543,16 @@ function DetailPanel({ summary, onClose, onScoreRefreshed }: { summary: AccountS
                       <span>Stable (-10% to +10%)    <b className="text-obs-text">15</b></span>
                       <span>Features {'\u2265'}75%             <b className="text-obs-text">15</b></span>
                       <span>Features {'\u2265'}50%             <b className="text-obs-text">10</b></span>
+                      <span>Intercom quick resolution  <b className="text-obs-text">+5</b></span>
+                      <span>Intercom AI-handled        <b className="text-obs-text">+3</b></span>
+                      <span>Intercom engagement        <b className="text-obs-text">+2</b></span>
+                      <span>Intercom open penalty      <b className="text-obs-text">-2 to -8</b></span>
                     </div>
                     <div className="border-t border-obs-edge pt-2 text-[14px] text-obs-ghost">
                       {hasLicenses
-                        ? 'Score out of 100 (all three signals active)'
+                        ? (intercomBonus > 0
+                            ? 'Score out of 110 max (Intercom engagement bonus active)'
+                            : 'Score out of 100 (all three signals active)')
                         : 'Score out of 40 — enter licence count to unlock utilisation'}
                     </div>
                     <div className="border-t border-obs-edge pt-2 text-[14px] text-obs-ghost">
