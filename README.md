@@ -1,59 +1,73 @@
 # CS Copilot
 
-A Customer Success tool that syncs active clients from HubSpot, fetches usage signals from Amplitude, computes health scores with Zendesk support penalty, and surfaces everything in a React web app.
+A Customer Success tool that syncs active clients from SQL Server, fetches usage signals from Amplitude, computes health scores with Zendesk/Intercom support penalties and Intercom engagement bonuses, and surfaces everything in a React web app behind Entra ID auth.
 
 ## Architecture
 
 ```
 Azure Functions (backend — all reads + writes)
   Nightly timer (2 AM UTC) / POST /api/sync
-    → Fetch active accounts from HubSpot (with domain)
+    → Fetch active accounts from SQL Server ([analytics].[ClientsOverview])
     → Upsert to Azure Table Storage (accounts table)
-    → Fetch Zendesk ticket data per unique domain (rate-limited)
+    → Auto-sync Amplitude aliases and licence counts from SQL
+    → Fetch Zendesk tickets in bulk (2-3 API calls)
+    → Fetch Intercom conversations (incremental + open snapshot)
+    → Store daily Intercom snapshots (intercomscores table)
     → For each mapped account: Amplitude Segmentation API → usage signals
-    → Compute health score (0–100) − Zendesk penalty (0 to -20)
+    → Compute health score (0–100) + Intercom bonus (0–10) − penalties (0 to -20)
     → Save to Azure Table Storage (churnscores table)
+    → Cleanup Intercom snapshots older than 35 days
 
-  GET /api/accounts        → List accounts + today's score
+  GET /api/accounts        → List accounts + today's score (CSM-filtered)
   GET /api/accounts/:id    → Single account + 7-day history + score breakdown
-  PATCH /api/accounts/:id  → Update licence count / ARR
-  GET /api/mapping         → List all mappings
+  PATCH /api/accounts/:id  → Update licence count / ARR / hidden flag
+  GET /api/mapping         → List all Amplitude mappings
   POST /api/mapping        → Create/update mapping
   DELETE /api/mapping/:id  → Remove mapping
-  POST /api/sync           → Trigger on-demand sync
+  POST /api/sync           → Trigger on-demand sync (admin only)
+  GET /api/me              → Current user info
+  GET /api/users           → List users (admin only)
+  POST /api/users          → Create user (admin only)
+  DELETE /api/users        → Delete user (admin only)
 
-React Frontend (Azure Static Web Apps)
-  /           → Portfolio page (dark/light theme, inline editing for alias/licences/ARR, Top 10 review)
+React Frontend (Azure Static Web Apps, Entra ID auth)
+  /           → Portfolio page (dark theme, role-aware UI)
+  /admin      → User management (admin only)
 ```
 
 ### Data Sources
 
 | Source | Used for |
 |--------|----------|
-| HubSpot | Account roster, ARR, renewal date, CSM assignment, domain |
+| SQL Server | Account roster, ARR, renewal date, CSM assignment, domain, aliases, licences |
 | Amplitude | DAU/WAU trend, MAU (monthly active users), feature breadth (12 categories) |
-| Zendesk | Ticket volume, open tickets, severity (penalty deduction) |
-| Azure Table Storage | Accounts, mappings, daily scores |
+| Zendesk | Ticket volume, open tickets, severity → penalty deduction |
+| Intercom | Conversation volume, open count, response time → penalty + engagement bonus |
+| Azure Table Storage | Accounts, mappings, daily scores, users, Intercom snapshots |
 
 ### Health Score
 
-Three Amplitude-derived components, normalised to 0–100, then adjusted by Zendesk penalty:
+Three Amplitude-derived components normalised to 0–100, then adjusted by support penalties and engagement bonus:
 
 | Signal | Weight | Description |
 |--------|--------|-------------|
-| MAU trend (30d) | 0–40 pts | Compares current vs prior 30-day unique users (weekend-immune) |
-| Licence utilisation | 0–35 pts | MAU ÷ paid seats (manually entered). Omitted when licences not set |
-| Feature breadth (30d) | 0–25 pts | Fraction of 12 tracked Birdview feature categories with any activity |
+| Licence utilisation | 0–60 pts | MAU ÷ paid seats. Omitted when licences not set |
+| Activity trend (30d) | 0–25 pts | DAU/WAU ratio change over 28 days |
+| Feature adoption (30d) | 0–15 pts | Fraction of 12 tracked Birdview categories with activity |
 
-When licences are not set, score is normalised out of 65 (max from DAU/WAU + feature breadth). When licences are set, normalised out of 100.
+When licences are not set, score is normalised out of 40 (activity + features). When set, normalised out of 100.
 
-**Zendesk penalty** (0 to -20 pts): Applied after normalisation. Three sub-signals: ticket volume (last 30d), open tickets (all time), severity (urgent/high in 30d). Capped at -20. Accounts without a domain get no penalty.
+**Zendesk penalty** (0 to -20 pts): Three sub-signals: ticket volume (30d), open tickets, severity. Applied after normalisation.
 
-**Feature categories tracked:** Activity Center, Time Tracking, Resources, Reporting, Dashboards, Financials, Invoices, Custom Forms, AI Features, Collaboration, Workload, Settings.
+**Intercom penalty** (0 to -12 pts): Two sub-signals: open conversations, slow response time (avg > 24h with 3+ conversations).
+
+**Combined penalty cap:** Zendesk + Intercom penalties summed and capped at -20.
+
+**Intercom engagement bonus** (0 to +10 pts): Three signals: quick resolutions (≤2 replies), AI-handled conversations, active engagement (volume ≥3, open ≤1). Applied after penalties. Max score: 110.
 
 | Score | Tier |
 |-------|------|
-| 80–100 | Healthy |
+| 80+ | Healthy |
 | 60–79 | Watch |
 | 40–59 | At Risk |
 | 0–39 | Critical |
@@ -61,11 +75,13 @@ When licences are not set, score is normalised out of 65 (max from DAU/WAU + fea
 
 ### Azure Table Storage Schema
 
-Three tables:
+Five tables:
 
-- **`accounts`** — PartitionKey: `"accounts"`, RowKey: HubSpot company ID. Synced nightly from HubSpot.
-- **`amplitudemapping`** — PartitionKey: `"mapping"`, RowKey: HubSpot company ID. Managed via web UI.
-- **`churnscores`** — PartitionKey: HubSpot company ID, RowKey: `YYYY-MM-DD`. One row per account per day.
+- **`accounts`** — PartitionKey: `"accounts"`, RowKey: account ID. Synced nightly from SQL Server.
+- **`amplitudemapping`** — PartitionKey: `"mapping"`, RowKey: account ID. Auto-synced from SQL, manually correctable.
+- **`churnscores`** — PartitionKey: account ID, RowKey: `YYYY-MM-DD`. Includes Zendesk + Intercom penalty/bonus details.
+- **`users`** — PartitionKey: `"users"`, RowKey: email (lowercase). Three roles: admin/supervisor/csm.
+- **`intercomscores`** — PartitionKey: domain, RowKey: `YYYY-MM-DD`. Daily Intercom conversation snapshots (30d rolling window).
 
 ## Deployments
 
@@ -82,7 +98,7 @@ Three tables:
 cd backend
 npm run build        # tsc → dist/
 npm start            # func start (local dev)
-npm test             # jest (96 tests across 7 suites)
+npm test             # jest (169 tests across 11 suites)
 
 # Frontend
 cd frontend
@@ -97,17 +113,19 @@ npm run build        # tsc + vite build
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `AZURE_STORAGE_CONNECTION_STRING` | Yes | Azure Table Storage connection string |
-| `HUBSPOT_API_KEY` | Yes | HubSpot private app token |
 | `AMPLITUDE_API_KEY` | Yes | Amplitude API key |
 | `AMPLITUDE_SECRET_KEY` | Yes | Amplitude secret key |
+| `SQL_SERVER_DETAILS` | Yes | SQL Server connection string |
+| `SQL_LOGIN` | Yes | SQL Server login |
+| `SQL_PASSWORD` | Yes | SQL Server password |
 | `AMPLITUDE_ACCOUNT_PROPERTY` | No | Amplitude user property for account filtering (default: `gp:alias`) |
 | `AMPLITUDE_FEATURE_EVENTS` | No | JSON array of `{category, eventType}` pairs (default: 12 Birdview categories) |
-| `ZENDESK_SUBDOMAIN` | No | Zendesk subdomain (e.g., `helpeasyprojects`). Enables Zendesk penalty when all 3 set |
+| `ZENDESK_SUBDOMAIN` | No | Zendesk subdomain. Enables Zendesk penalty when all 3 Zendesk vars set |
 | `ZENDESK_EMAIL` | No | Zendesk agent email for API auth |
 | `ZENDESK_API_TOKEN` | No | Zendesk API token |
-| `AZURE_STORAGE_TABLE_ACCOUNTS` | No | Table name (default: `accounts`) |
-| `AZURE_STORAGE_TABLE_MAPPING` | No | Table name (default: `amplitudemapping`) |
-| `AZURE_STORAGE_TABLE_SCORES` | No | Table name (default: `churnscores`) |
+| `INTERCOM_ACCESS_TOKEN` | No | Intercom bearer token. Enables Intercom penalty + bonus when set |
+| `DATA_SOURCE` | No | `sql` (default) or `hubspot` (rollback) |
+| `SKIP_AUTH` | No | Set to bypass auth in local dev |
 
 ### Frontend (`frontend/.env.local`)
 
@@ -115,12 +133,12 @@ npm run build        # tsc + vite build
 |----------|-------------|
 | `VITE_API_URL` | Backend URL (default: `/api`) |
 | `VITE_API_KEY` | Azure Functions host key |
+| `VITE_SKIP_AUTH` | Set to bypass auth in local dev |
 
 ## Design Documents
 
 - **MVP spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
-- **MVP implementation plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
-- **Feature breadth spec:** `docs/superpowers/specs/2026-03-13-feature-breadth-metric-design.md`
-- **Zendesk penalty plan:** `docs/plans/2026-03-15-zendesk-penalty-plan.md`
+- **Auth spec:** `docs/superpowers/specs/2026-03-17-auth-and-user-management-design.md`
+- **Intercom spec:** `docs/superpowers/specs/2026-03-21-intercom-integration-design.md`
+- **Intercom plan:** `docs/superpowers/plans/2026-03-21-intercom-integration.md`
 - **Progress:** `progress.md`
-- **TODOs:** `TODOS.md`

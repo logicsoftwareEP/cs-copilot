@@ -1,6 +1,6 @@
 # CS Copilot - Progress
 
-## Status: Live — SQL data source + Auth + Zendesk bulk sync (2026-03-17)
+## Status: Live — Intercom integration + reweighted scoring (2026-03-21)
 
 **Spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 **Plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
@@ -9,9 +9,10 @@
 
 ## What's Left
 
-1. Add remaining CSM users via `/admin` page
-2. Verify all 32 alias casing corrections are scoring correctly (next nightly sync)
-3. See `TODOS.md` for deferred items (sentiment analysis, Slack alerts)
+1. Set `INTERCOM_ACCESS_TOKEN` in Azure Functions app configuration to enable Intercom scoring
+2. Add remaining CSM users via `/admin` page
+3. Troubleshooting page (`/troubleshoot`) for raw signal data — planned follow-up
+4. See `TODOS.md` for deferred items
 
 ---
 
@@ -39,13 +40,34 @@
 
 ---
 
-## Validation Snapshot (2026-03-17)
+## Validation Snapshot (2026-03-21)
 
 - Backend TypeScript build: **clean**
-- Backend tests: **112/112 passing** across 9 suites
-- Frontend TypeScript + Vite build: **clean** (226 kB JS, 23 kB CSS)
+- Backend tests: **169/169 passing** across 11 suites
+- Frontend TypeScript + Vite build: **clean**
 - Backend + frontend deployed to Azure
-- 268 accounts, 257 aliases (195 scoring), 27 with Zendesk penalties
+
+### 2026-03-21 — Intercom integration + scoring reweight
+
+**Scoring reweight:**
+- Licence utilisation: 35 → **60 pts** (dominant signal)
+- Activity trend: 40 → **25 pts**
+- Feature adoption: 25 → **15 pts**
+- No-licence normalisation: 65 → 40
+- Extracted `scoreToTier()` helper, derived `maxPossible` from named constants
+
+**Intercom integration:**
+- `intercomClient.ts`: Two-pass fetch — incremental conversations (36h) + open snapshot. Aggregates by contact email domain. Generic domains excluded.
+- `intercomStore.ts`: Daily snapshots in `intercomscores` table. 30-day aggregation (sum events, latest openCount, weighted avg response time). Auto-cleanup > 35 days.
+- **Intercom penalty** (0 to -12): open conversations (0 to -7) + slow responses > 24h (0 to -5)
+- **Intercom bonus** (0 to +10): quick resolutions (0–4) + AI-handled (0–3) + active engagement (0–3)
+- **Combined penalty cap**: Zendesk + Intercom summed and capped at -20
+- `applyAllPenalties()` replaces `applyZendeskPenalty()` — single entry point for all penalties + bonus
+- Score range now 0–110 (100 base + 10 bonus)
+- SyncRunner: Intercom fetch phase, snapshot storage, 30d aggregation, scoring, cleanup
+- AccountsApi: detail endpoint serves `intercomDetails`, uses pre-computed data from `intercomscores`
+- Frontend: Intercom Support card, Intercom Engagement card, score > 100 badge, renamed Zendesk card, combined cap note, updated scoring key
+- 57 new tests (15 client + 42 scoring)
 
 ### 2026-03-17 — SQL Server data source + Auth + Zendesk bulk sync
 
@@ -118,15 +140,15 @@
 
 ## Architecture Summary
 
-**Azure SWA (Entra ID auth)** → **React frontend** (role-based UI) → **Azure Functions** (auth middleware + read API + mapping CRUD) → **Azure Table Storage** (4 tables: `accounts`, `amplitudemapping`, `churnscores`, `users`).
+**Azure SWA (Entra ID auth)** → **React frontend** (role-based UI) → **Azure Functions** (auth middleware + read API + mapping CRUD) → **Azure Table Storage** (5 tables: `accounts`, `amplitudemapping`, `churnscores`, `users`, `intercomscores`).
 
-**SyncRunner** fetches SQL Server accounts + Zendesk bulk tickets + Amplitude signals → computes health scores → writes to Table Storage. Aliases and licences auto-synced from SQL.
+**SyncRunner** fetches SQL Server accounts + Zendesk bulk tickets + Intercom conversations + Amplitude signals → computes health scores → writes to Table Storage. Aliases and licences auto-synced from SQL.
 
 Sync runs: (a) nightly timer trigger at 2 AM UTC, (b) on-demand via `POST /api/sync` (admin only).
 
-**Health Score:** DAU/WAU trend (0–40 pts) + Licence utilisation MAU÷seats (0–35 pts) + Feature breadth (0–25 pts) − Zendesk penalty (0 to -20 pts). Normalised to 65 when licences not yet entered, 100 when set.
+**Health Score:** Licence utilisation (0–60 pts) + Activity trend (0–25 pts) + Feature adoption (0–15 pts) + Intercom bonus (0–10 pts) − Zendesk/Intercom penalty (0 to -20 pts). Normalised to 40 when licences not entered, 100 when set. Max 110 with engagement bonus.
 
-**Tiers:** Healthy (80-100), Watch (60-79), At Risk (40-59), Critical (0-39), Unmapped (no Amplitude alias).
+**Tiers:** Healthy (80+), Watch (60-79), At Risk (40-59), Critical (0-39), Unmapped (no Amplitude alias).
 
 ---
 
