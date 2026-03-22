@@ -44,13 +44,15 @@ Entry point `src/index.ts` imports all function modules as side effects.
 - `hubspotClient.ts` - **DISABLED**: HubSpot CRM API. Retained for rollback via `DATA_SOURCE=hubspot`.
 - `amplitudeClient.ts` - Amplitude Segmentation API: MAU trend, feature breadth (12 categories). Uses `gp:alias` user property with case-sensitive `is` filter.
 - `zendeskClient.ts` - Fetches ALL open/pending tickets in bulk (2-3 API calls), aggregates by requester email domain. No per-domain search.
+- `intercomClient.ts` - Intercom Conversations API: bulk-fetch conversations (incremental + open snapshot), aggregate by contact email domain. Bearer token auth.
 
 **Services** (`src/services/`):
 - `accountStore.ts` - `AccountStore` wraps Azure Table Storage. `partitionKey = 'accounts'`, `rowKey = accountId`.
 - `mappingStore.ts` - `MappingStore` for `amplitudemapping` table. `partitionKey = 'mapping'`, `rowKey = accountId`.
 - `scoreStore.ts` - `ScoreStore` for `churnscores` table. `partitionKey = accountId`, `rowKey = YYYY-MM-DD`.
 - `userStore.ts` - `UserStore` for `users` table. `partitionKey = 'users'`, `rowKey = email (lowercase)`.
-- `healthScoreService.ts` - Pure scoring: licence utilisation (0–60) + activity trend (0–25) + feature adoption (0–15) − Zendesk penalty (0 to -20).
+- `intercomStore.ts` - `IntercomStore` for `intercomscores` table. `partitionKey = domain`, `rowKey = YYYY-MM-DD`. Daily snapshots aggregated for 30d scoring.
+- `healthScoreService.ts` - Pure scoring: licence utilisation (0–60) + activity trend (0–25) + feature adoption (0–15) + Intercom bonus (0–10) − Zendesk/Intercom penalty (0 to -20).
 
 **Patterns to follow:**
 - All env vars go through `getConfig()` in `config.ts`. `requireEnv()` hard-crashes on missing vars; optional vars have defaults.
@@ -91,11 +93,12 @@ VITE_SKIP_AUTH=true
 
 ## Data Model
 
-Four Azure Table Storage tables:
+Five Azure Table Storage tables:
 - **`accounts`** - Account data synced nightly from SQL Server
 - **`amplitudemapping`** - Account ID → Amplitude alias (auto-synced from SQL, manually correctable)
-- **`churnscores`** - Daily health scores per account
+- **`churnscores`** - Daily health scores per account (includes Intercom penalty/bonus/details)
 - **`users`** - Email → displayName + role (admin/supervisor/csm)
+- **`intercomscores`** - Daily Intercom conversation snapshots per domain (30d rolling window)
 
 `Account` → joined with latest `ChurnScore` + `AmplitudeMapping` → returned as `AccountSummary`.
 
@@ -113,7 +116,7 @@ SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only cr
 
 **Required:** `AZURE_STORAGE_CONNECTION_STRING`, `AMPLITUDE_API_KEY`, `AMPLITUDE_SECRET_KEY`, `SQL_SERVER_DETAILS`, `SQL_LOGIN`, `SQL_PASSWORD`
 
-**Optional:** `DATA_SOURCE` (default `sql`), `HUBSPOT_API_KEY` (for rollback), `AMPLITUDE_ACCOUNT_PROPERTY` (default `gp:alias`), `AMPLITUDE_FEATURE_EVENTS` (JSON), `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`, `SKIP_AUTH` (local dev only)
+**Optional:** `DATA_SOURCE` (default `sql`), `HUBSPOT_API_KEY` (for rollback), `AMPLITUDE_ACCOUNT_PROPERTY` (default `gp:alias`), `AMPLITUDE_FEATURE_EVENTS` (JSON), `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`, `INTERCOM_ACCESS_TOKEN`, `SKIP_AUTH` (local dev only)
 
 ## Amplitude API — CRITICAL
 
