@@ -196,41 +196,6 @@ export function computeZendeskPenalty(data: ZendeskTicketData): ZendeskPenaltyRe
   };
 }
 
-/**
- * Apply Zendesk penalty to a base health-score result.
- *
- * If zendeskData is null (i.e. Zendesk not configured or API error),
- * the base result is returned unchanged with zendeskPenalty = null.
- *
- * Otherwise the penalty is subtracted from the score (clamped to 0)
- * and the tier is re-derived from the adjusted score.
- */
-export function applyZendeskPenalty(
-  baseResult: HealthScoreResult,
-  zendeskData: ZendeskTicketData | null
-): HealthScoreResult & { zendeskPenalty: number | null } {
-  if (zendeskData === null) {
-    return { ...baseResult, zendeskPenalty: null };
-  }
-
-  const { totalPenalty } = computeZendeskPenalty(zendeskData);
-
-  // If the base score is null (unmapped account), penalty cannot be applied
-  if (baseResult.score === null) {
-    return { ...baseResult, zendeskPenalty: totalPenalty };
-  }
-
-  const adjustedScore = Math.max(0, baseResult.score + totalPenalty);
-  const tier = scoreToTier(adjustedScore);
-
-  return {
-    ...baseResult,
-    score: adjustedScore,
-    tier,
-    zendeskPenalty: totalPenalty,
-  };
-}
-
 // ── Intercom penalty scoring ─────────────────────────────────────────────────
 
 export interface IntercomPenaltyResult {

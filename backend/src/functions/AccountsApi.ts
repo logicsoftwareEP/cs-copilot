@@ -7,7 +7,8 @@ import { AccountSummary } from '../types';
 import { authenticateRequest, requireRole, AuthError } from '../auth';
 import { fetchSignals, validateAlias, AmplitudeSignals } from '../clients/amplitudeClient';
 import { fetchAllZendeskTickets } from '../clients/zendeskClient';
-import { computeScore, applyZendeskPenalty, computeZendeskPenalty } from '../services/healthScoreService';
+import { computeScore, applyAllPenalties, computeZendeskPenalty, computeIntercomPenalty, computeIntercomBonus } from '../services/healthScoreService';
+import { IntercomStore, IntercomAggregated } from '../services/intercomStore';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -182,6 +183,14 @@ async function getAccount(
         }
       }
 
+      // Fetch Intercom data for this account's domain
+      let intercomData: IntercomAggregated | null = null;
+      if (account.domain && config.intercomAccessToken) {
+        const intercomStore = new IntercomStore(config.storageConnectionString);
+        const rows = await intercomStore.getSnapshots(account.domain, 30);
+        intercomData = intercomStore.aggregate(rows);
+      }
+
       // Check for all-zero signals (alias mismatch)
       const isAllZero = signals.dauWauTrend === null
         && signals.monthlyActiveUsers === 0
@@ -195,6 +204,8 @@ async function getAccount(
         );
         if (!aliasExists) {
           const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
+          const intercomPenaltyResult = intercomData ? computeIntercomPenalty(intercomData) : null;
+          const intercomBonusResult = intercomData ? computeIntercomBonus(intercomData) : null;
           await scores.upsertScore({
             accountId, date: todayISO, score: null, tier: 'unmapped',
             dauWauTrend: null, monthlyActiveUsers: null, licenseUtilization: null,
@@ -202,7 +213,9 @@ async function getAccount(
             computedAt: new Date().toISOString(),
             zendeskPenalty: penalty ? penalty.totalPenalty : null,
             zendeskDetails: penalty ? JSON.stringify(penalty) : null,
-            intercomPenalty: null, intercomBonus: null, intercomDetails: null,
+            intercomPenalty: intercomPenaltyResult ? intercomPenaltyResult.totalPenalty : null,
+            intercomBonus: intercomBonusResult ? intercomBonusResult.totalBonus : null,
+            intercomDetails: intercomPenaltyResult ? JSON.stringify({ penalty: intercomPenaltyResult, bonus: intercomBonusResult }) : null,
             aliasStatus: 'not-found',
           });
           return {
@@ -215,8 +228,10 @@ async function getAccount(
 
       // Compute score
       const baseResult = computeScore(signals, account.licenses);
-      const adjusted = applyZendeskPenalty(baseResult, zendeskData);
+      const adjusted = applyAllPenalties(baseResult, zendeskData, intercomData);
       const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
+      const intercomPenaltyResult = intercomData ? computeIntercomPenalty(intercomData) : null;
+      const intercomBonusResult = intercomData ? computeIntercomBonus(intercomData) : null;
 
       let featureDetailsJson: string | null = null;
       if (signals.featureBreadth) {
@@ -250,7 +265,9 @@ async function getAccount(
         computedAt: new Date().toISOString(),
         zendeskPenalty: adjusted.zendeskPenalty,
         zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
-        intercomPenalty: null, intercomBonus: null, intercomDetails: null,
+        intercomPenalty: intercomPenaltyResult ? intercomPenaltyResult.totalPenalty : null,
+        intercomBonus: intercomBonusResult ? intercomBonusResult.totalBonus : null,
+        intercomDetails: intercomPenaltyResult ? JSON.stringify({ penalty: intercomPenaltyResult, bonus: intercomBonusResult }) : null,
         aliasStatus: 'valid',
       });
 
@@ -303,6 +320,9 @@ async function getAccount(
               featureDetails: latestScore.featureDetails ? JSON.parse(latestScore.featureDetails as string) : null,
               zendeskPenalty: latestScore.zendeskPenalty ?? null,
               zendeskDetails: latestScore.zendeskDetails ? JSON.parse(latestScore.zendeskDetails as string) : null,
+              intercomPenalty: latestScore.intercomPenalty ?? null,
+              intercomBonus: latestScore.intercomBonus ?? null,
+              intercomDetails: latestScore.intercomDetails ? JSON.parse(latestScore.intercomDetails as string) : null,
             }
           : null,
         scoreHistory: history,

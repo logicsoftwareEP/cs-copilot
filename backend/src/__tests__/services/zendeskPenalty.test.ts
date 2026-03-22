@@ -1,7 +1,5 @@
 import {
   computeZendeskPenalty,
-  applyZendeskPenalty,
-  HealthScoreResult,
 } from '../../services/healthScoreService';
 import { ZendeskTicketData } from '../../clients/zendeskClient';
 
@@ -12,19 +10,6 @@ function zd(overrides: Partial<ZendeskTicketData> = {}): ZendeskTicketData {
     openCount: 0,
     highPriorityCount: 0,
     urgentCount: 0,
-    ...overrides,
-  };
-}
-
-// Helper: build a base HealthScoreResult
-function baseResult(overrides: Partial<HealthScoreResult> = {}): HealthScoreResult {
-  return {
-    score: 80,
-    tier: 'healthy',
-    licenseUtilization: 0.8,
-    monthlyActiveUsers: 80,
-    featuresUsed: 8,
-    featureDetails: null,
     ...overrides,
   };
 }
@@ -133,73 +118,3 @@ describe('computeZendeskPenalty', () => {
   });
 });
 
-describe('applyZendeskPenalty', () => {
-
-  it('passes through base result unchanged when zendeskData is null', () => {
-    const base = baseResult();
-    const result = applyZendeskPenalty(base, null);
-
-    expect(result.score).toBe(80);
-    expect(result.tier).toBe('healthy');
-    expect(result.zendeskPenalty).toBeNull();
-  });
-
-  it('reduces score and re-derives tier when penalty applied', () => {
-    // Base score 80 (healthy), penalty from 5 tickets + 2 open + 1 high
-    // volume -3, open -2, severity -2 = -7 → 80-7 = 73 → watch
-    const result = applyZendeskPenalty(
-      baseResult({ score: 80, tier: 'healthy' }),
-      zd({ ticketVolume: 5, openCount: 2, highPriorityCount: 1 })
-    );
-
-    expect(result.score).toBe(73);
-    expect(result.tier).toBe('watch');
-    expect(result.zendeskPenalty).toBe(-7);
-  });
-
-  it('clamps score to 0 when penalty exceeds score', () => {
-    // Base score 10, penalty -15 (volume -8 + open -7)
-    const result = applyZendeskPenalty(
-      baseResult({ score: 10, tier: 'critical' }),
-      zd({ ticketVolume: 11, openCount: 6 })
-    );
-
-    expect(result.score).toBe(0);
-    expect(result.tier).toBe('critical');
-    expect(result.zendeskPenalty).toBe(-15);
-  });
-
-  it('handles null base score (unmapped account)', () => {
-    const result = applyZendeskPenalty(
-      baseResult({ score: null, tier: 'unmapped' }),
-      zd({ ticketVolume: 5, openCount: 2 })
-    );
-
-    expect(result.score).toBeNull();
-    expect(result.tier).toBe('unmapped');
-    expect(result.zendeskPenalty).toBe(-5); // volume -3 + open -2
-  });
-
-  it('keeps healthy tier when penalty is small', () => {
-    // Score 95, penalty -3 = 92 → still healthy
-    const result = applyZendeskPenalty(
-      baseResult({ score: 95, tier: 'healthy' }),
-      zd({ ticketVolume: 3 })
-    );
-
-    expect(result.score).toBe(92);
-    expect(result.tier).toBe('healthy');
-    expect(result.zendeskPenalty).toBe(-3);
-  });
-
-  it('applies zero penalty when ticket data shows no issues', () => {
-    const result = applyZendeskPenalty(
-      baseResult({ score: 80, tier: 'healthy' }),
-      zd()
-    );
-
-    expect(result.score).toBe(80);
-    expect(result.tier).toBe('healthy');
-    expect(result.zendeskPenalty).toBe(0);
-  });
-});
