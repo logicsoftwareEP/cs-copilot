@@ -215,7 +215,7 @@ async function getAccount(
             zendeskDetails: penalty ? JSON.stringify(penalty) : null,
             intercomPenalty: intercomPenaltyResult ? intercomPenaltyResult.totalPenalty : null,
             intercomBonus: intercomBonusResult ? intercomBonusResult.totalBonus : null,
-            intercomDetails: intercomPenaltyResult ? JSON.stringify({ penalty: intercomPenaltyResult, bonus: intercomBonusResult }) : null,
+            intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyResult, ...intercomBonusResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
             aliasStatus: 'not-found',
           });
           return {
@@ -267,7 +267,7 @@ async function getAccount(
         zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
         intercomPenalty: intercomPenaltyResult ? intercomPenaltyResult.totalPenalty : null,
         intercomBonus: intercomBonusResult ? intercomBonusResult.totalBonus : null,
-        intercomDetails: intercomPenaltyResult ? JSON.stringify({ penalty: intercomPenaltyResult, bonus: intercomBonusResult }) : null,
+        intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyResult, ...intercomBonusResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
         aliasStatus: 'valid',
       });
 

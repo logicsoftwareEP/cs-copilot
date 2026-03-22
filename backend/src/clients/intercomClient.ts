@@ -168,18 +168,19 @@ function aggregateConversations(
 
     const snap = ensureSnapshot(map, domain);
 
-    snap.conversationVolume++;
-
-    if (countOpen && conv.state === 'open') {
-      snap.openCount++;
+    if (countOpen) {
+      // Pass 2: only count open conversations (point-in-time snapshot)
+      if (conv.state === 'open') snap.openCount++;
+      continue;
     }
 
-    // AI handled
+    // Pass 1: event-based metrics from incremental fetch
+    snap.conversationVolume++;
+
     if (conv.ai_agent_participated === true) {
       snap.aiHandled++;
     }
 
-    // Response time from statistics
     const firstReply = conv.statistics?.first_admin_reply_at;
     if (firstReply && conv.created_at) {
       const elapsed = firstReply - conv.created_at;
@@ -189,7 +190,6 @@ function aggregateConversations(
       }
     }
 
-    // Quick resolution: closed AND conversation_parts.total_count <= 2
     if (countQuick && conv.state === 'closed' && conv.conversation_parts?.total_count <= 2) {
       snap.quickResolutions++;
     }

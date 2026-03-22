@@ -174,6 +174,9 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
       log('Zendesk: disabled (missing config)');
     }
 
+    // ── Date calculations ─────────────────────────────────────────────────────
+    const todayISO = new Date().toISOString().slice(0, 10);
+
     // ── Intercom fetch phase ──────────────────────────────────────────────────
     const intercomEnabled = !!config.intercomAccessToken;
     const intercomStore = new IntercomStore(config.storageConnectionString);
@@ -182,13 +185,12 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
 
     if (intercomEnabled) {
       await intercomStore.ensureTable();
-      const todayISOIntercom = new Date().toISOString().slice(0, 10);
       const snapshots = await fetchIntercomConversations(config.intercomAccessToken!, 36);
       if (snapshots === null) {
         log('Intercom: fetch failed (possible auth failure)');
       } else {
         for (const [domain, data] of snapshots) {
-          await intercomStore.upsertSnapshot(domain, todayISOIntercom, data);
+          await intercomStore.upsertSnapshot(domain, todayISO, data);
         }
         log(`Intercom: stored snapshots for ${snapshots.size} domains`);
 
@@ -218,8 +220,6 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayISO = yesterday.toISOString().slice(0, 10);
     const yesterdayScores = await scoreStore.getAllScoresForDate(yesterdayISO);
-
-    const todayISO = new Date().toISOString().slice(0, 10);
 
     let scored = 0;
     let failed = 0;
@@ -306,8 +306,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         const baseResult = computeScore(signals, licenses);
 
         // Apply Zendesk + Intercom penalties/bonuses
-        const accountDomainForIntercom = storedMap.get(company.accountId)?.domain ?? company.domain ?? null;
-        const intercomData = accountDomainForIntercom ? intercomDomainMap.get(accountDomainForIntercom) ?? null : null;
+        const intercomData = accountDomain ? (intercomDomainMap.get(accountDomain) ?? null) : null;
         const adjusted = applyAllPenalties(baseResult, zendeskData, intercomData);
         const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
         const intercomPenaltyDetails = intercomData ? computeIntercomPenalty(intercomData) : null;

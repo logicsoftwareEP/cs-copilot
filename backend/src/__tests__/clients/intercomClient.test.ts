@@ -145,7 +145,7 @@ describe('intercomClient', () => {
 
       expect(result).not.toBeNull();
       const acme = result!.get('acme.com')!;
-      expect(acme.conversationVolume).toBe(2); // both conversations
+      expect(acme.conversationVolume).toBe(1); // only pass 1 (incremental)
       expect(acme.openCount).toBe(1); // only open
     });
 
@@ -216,11 +216,12 @@ describe('intercomClient', () => {
     });
 
     it('counts AI-handled conversations', async () => {
-      const aiConv = makeConvWithEmail({ id: '1', email: 'a@acme.com', state: 'open', ai: true });
-      const humanConv = makeConvWithEmail({ id: '2', email: 'b@acme.com', state: 'open', ai: false });
+      const aiConv = makeConvWithEmail({ id: '1', email: 'a@acme.com', state: 'closed', ai: true });
+      const humanConv = makeConvWithEmail({ id: '2', email: 'b@acme.com', state: 'closed', ai: false });
 
-      mockFetch.mockResolvedValueOnce(searchPage([]));
+      // AI/human conversations go in Pass 1 (incremental) — Pass 2 only counts openCount
       mockFetch.mockResolvedValueOnce(searchPage([aiConv, humanConv]));
+      mockFetch.mockResolvedValueOnce(searchPage([]));
 
       const result = await fetchIntercomConversations(TOKEN, HOURS_BACK);
 
@@ -235,13 +236,14 @@ describe('intercomClient', () => {
       const conv = makeConvWithEmail({
         id: '1',
         email: 'a@acme.com',
-        state: 'open',
+        state: 'closed',
         createdAt,
         firstAdminReply,
       });
 
-      mockFetch.mockResolvedValueOnce(searchPage([]));
+      // Response time tracked in Pass 1 (incremental) — Pass 2 only counts openCount
       mockFetch.mockResolvedValueOnce(searchPage([conv]));
+      mockFetch.mockResolvedValueOnce(searchPage([]));
 
       const result = await fetchIntercomConversations(TOKEN, HOURS_BACK);
 
@@ -252,11 +254,12 @@ describe('intercomClient', () => {
     });
 
     it('accumulates response time across multiple conversations', async () => {
-      const conv1 = makeConvWithEmail({ id: '1', email: 'a@acme.com', state: 'open', createdAt: 1700000000, firstAdminReply: 1700000100 }); // 100s
-      const conv2 = makeConvWithEmail({ id: '2', email: 'b@acme.com', state: 'open', createdAt: 1700000000, firstAdminReply: 1700000200 }); // 200s
+      const conv1 = makeConvWithEmail({ id: '1', email: 'a@acme.com', state: 'closed', createdAt: 1700000000, firstAdminReply: 1700000100 }); // 100s
+      const conv2 = makeConvWithEmail({ id: '2', email: 'b@acme.com', state: 'closed', createdAt: 1700000000, firstAdminReply: 1700000200 }); // 200s
 
-      mockFetch.mockResolvedValueOnce(searchPage([]));
+      // Response time tracked in Pass 1 (incremental)
       mockFetch.mockResolvedValueOnce(searchPage([conv1, conv2]));
+      mockFetch.mockResolvedValueOnce(searchPage([]));
 
       const result = await fetchIntercomConversations(TOKEN, HOURS_BACK);
 
