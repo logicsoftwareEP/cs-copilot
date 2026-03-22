@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { getAccounts, getAccountDetail } from '../services/api';
 import { AccountSummary, AccountDetail, ScoreBreakdown, ZendeskDetails, IntercomDetails } from '../types';
 
@@ -226,8 +226,9 @@ export default function Troubleshoot() {
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('account'));
 
   useEffect(() => {
     getAccounts()

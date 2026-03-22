@@ -274,6 +274,7 @@ function MetricCard({ label, value, sub, accent, delay }: {
 
 function DetailPanel({ summary, onClose, onScoreRefreshed }: { summary: AccountSummary; onClose: () => void; onScoreRefreshed?: (accountId: string, score: number | null, tier: string) => void }) {
   const { user } = useAuth();
+  const isCSM = user?.role === 'csm';
   const canRefresh = user?.role === 'admin' || user?.role === 'supervisor';
   const [detail, setDetail] = useState<AccountDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -329,16 +330,28 @@ function DetailPanel({ summary, onClose, onScoreRefreshed }: { summary: AccountS
             </button>
           </div>
 
-          {summary.hubspotUrl && (
-            <a href={summary.hubspotUrl} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-[14px] text-obs-accent hover:text-obs-glow mt-3 transition-colors group">
-              Open in HubSpot
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"
-                   className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform">
-                <path d="M2 10L10 2M4 2h6v6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </a>
-          )}
+          <div className="flex items-center gap-4 mt-3">
+            {summary.hubspotUrl && (
+              <a href={summary.hubspotUrl} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-[14px] text-obs-accent hover:text-obs-glow transition-colors group">
+                Open in HubSpot
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"
+                     className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform">
+                  <path d="M2 10L10 2M4 2h6v6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </a>
+            )}
+            {!isCSM && (
+              <a href={`/troubleshoot?account=${encodeURIComponent(summary.accountId)}`} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-[14px] text-obs-accent hover:text-obs-glow transition-colors group">
+                Details
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"
+                     className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform">
+                  <path d="M2 10L10 2M4 2h6v6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Scrollable body */}
