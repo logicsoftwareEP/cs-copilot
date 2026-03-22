@@ -31,8 +31,9 @@ Azure Functions (backend — all reads + writes)
   DELETE /api/users        → Delete user (admin only)
 
 React Frontend (Azure Static Web Apps, Entra ID auth)
-  /           → Portfolio page (dark theme, role-aware UI)
-  /admin      → User management (admin only)
+  /              → Portfolio page (dark theme, role-aware UI)
+  /admin         → User management (admin only)
+  /troubleshoot  → Raw scoring data per account (admin only)
 ```
 
 ### Data Sources

@@ -11,8 +11,7 @@
 
 1. Set `INTERCOM_ACCESS_TOKEN` in Azure Functions app configuration to enable Intercom scoring
 2. Add remaining CSM users via `/admin` page
-3. Troubleshooting page (`/troubleshoot`) for raw signal data — planned follow-up
-4. See `TODOS.md` for deferred items
+3. See `TODOS.md` for deferred items
 
 ---
 
@@ -68,6 +67,13 @@
 - AccountsApi: detail endpoint serves `intercomDetails`, uses pre-computed data from `intercomscores`
 - Frontend: Intercom Support card, Intercom Engagement card, score > 100 badge, renamed Zendesk card, combined cap note, updated scoring key
 - 57 new tests (15 client + 42 scoring)
+
+**Troubleshooting page:**
+- New `/troubleshoot` route (admin-only) — displays all raw signal data per account
+- Amplitude signals, Zendesk details, Intercom details, score calculation breakdown, 7-day history
+- Account list with search, click to view details
+- "Details" link in Portfolio side panel opens Troubleshoot for the selected account in a new tab
+- Deep-linkable via `?account={id}` query param
 
 ### 2026-03-17 — SQL Server data source + Auth + Zendesk bulk sync
 
