@@ -56,7 +56,8 @@ const MockIntercomStore = IntercomStore as jest.MockedClass<typeof IntercomStore
 
 // HubSpot does not carry licenses — that is entered manually after sync
 const COMPANY_A: Account = {
-  accountId: 'hs-001',
+  accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  hubspotCompanyId: '1',
   accountName: 'Alpha Corp',
   csmName: 'Jane Smith',
   csmEmail: 'jane@example.com',
@@ -70,7 +71,8 @@ const COMPANY_A: Account = {
 };
 
 const COMPANY_B: Account = {
-  accountId: 'hs-002',
+  accountId: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
+  hubspotCompanyId: '2',
   accountName: 'Beta Inc',
   csmName: 'John Doe',
   csmEmail: 'john@example.com',
@@ -94,6 +96,7 @@ const GOOD_SIGNALS: AmplitudeSignals = {
 function setupStoreMocks(opts: {
   mappings?: Array<{ accountId: string; amplitudeAlias: string }>;
   yesterdayScores?: Map<string, { score: number | null }>;
+  todayScores?: Map<string, { score: number | null }>;
   storedAccounts?: Account[];
 } = {}) {
   const upsertAccount = jest.fn().mockResolvedValue(undefined);
@@ -110,9 +113,11 @@ function setupStoreMocks(opts: {
       updatedAt: '',
     }))
   );
-  const getAllScoresForDate = jest.fn().mockResolvedValue(
-    opts.yesterdayScores ?? new Map()
-  );
+  const yesterdayISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const getAllScoresForDate = jest.fn().mockImplementation((date: string) => {
+    if (date === yesterdayISO) return Promise.resolve(opts.yesterdayScores ?? new Map());
+    return Promise.resolve(opts.todayScores ?? new Map());
+  });
   const upsertScore = jest.fn().mockResolvedValue(undefined);
 
   MockAccountStore.mockImplementation(() => ({
@@ -176,8 +181,8 @@ describe('runSync', () => {
   it('happy path: 2 companies both mapped both succeed → synced=2, scored=2, failed=0', async () => {
     const { upsertAccount, upsertScore } = setupStoreMocks({
       mappings: [
-        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
-        { accountId: 'hs-002', amplitudeAlias: 'beta' },
+        { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' },
+        { accountId: 'b2c3d4e5-f6a7-8901-bcde-f12345678901', amplitudeAlias: 'beta' },
       ],
     });
 
@@ -204,7 +209,7 @@ describe('runSync', () => {
   it('one company unmapped → synced=2, scored=1, failed=0, unmapped gets tier=unmapped', async () => {
     const { upsertScore } = setupStoreMocks({
       mappings: [
-        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
+        { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' },
         // hs-002 is NOT mapped
       ],
     });
@@ -221,7 +226,7 @@ describe('runSync', () => {
 
     // Find the upsertScore call for hs-002 (the unmapped one)
     const unmappedCall = upsertScore.mock.calls.find(
-      (call) => call[0].accountId === 'hs-002'
+      (call) => call[0].accountId === 'b2c3d4e5-f6a7-8901-bcde-f12345678901'
     );
     expect(unmappedCall).toBeDefined();
     expect(unmappedCall![0].tier).toBe('unmapped');
@@ -231,8 +236,8 @@ describe('runSync', () => {
   it('Amplitude fetch fails for one company → failed=1, error recorded, null score written', async () => {
     const { upsertScore } = setupStoreMocks({
       mappings: [
-        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
-        { accountId: 'hs-002', amplitudeAlias: 'beta' },
+        { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' },
+        { accountId: 'b2c3d4e5-f6a7-8901-bcde-f12345678901', amplitudeAlias: 'beta' },
       ],
     });
 
@@ -251,7 +256,7 @@ describe('runSync', () => {
 
     // The failed account still gets a null score written
     const failedCall = upsertScore.mock.calls.find(
-      (call) => call[0].accountId === 'hs-002' && call[0].score === null
+      (call) => call[0].accountId === 'b2c3d4e5-f6a7-8901-bcde-f12345678901' && call[0].score === null
     );
     expect(failedCall).toBeDefined();
     expect(failedCall![0].tier).toBe('unmapped');
@@ -274,11 +279,11 @@ describe('runSync', () => {
     const yesterdayISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
     const yesterdayScoreMap = new Map<string, any>([
-      ['hs-001', { accountId: 'hs-001', date: yesterdayISO, score: 70, tier: 'watch' }],
+      ['a1b2c3d4-e5f6-7890-abcd-ef1234567890', { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', date: yesterdayISO, score: 70, tier: 'watch' }],
     ]);
 
     const { upsertScore } = setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' }],
       yesterdayScores: yesterdayScoreMap,
       storedAccounts: [{ ...COMPANY_A, licenses: null }],
     });
@@ -301,7 +306,7 @@ describe('runSync', () => {
     const storedA: Account = { ...COMPANY_A, licenses: 100 };
 
     const { upsertScore } = setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' }],
       storedAccounts: [storedA],
     });
 
@@ -342,7 +347,7 @@ describe('runSync', () => {
     const companyWithDomain: Account = { ...COMPANY_A, domain: 'alpha.com' };
 
     const { upsertScore } = setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' }],
       storedAccounts: [companyWithDomain],
     });
 
@@ -372,7 +377,7 @@ describe('runSync', () => {
     disableZendeskConfig();
 
     setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' }],
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
@@ -418,7 +423,7 @@ describe('runSync', () => {
     const companyA: Account = { ...COMPANY_A, domain: 'alpha.com' };
 
     setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' }],
       storedAccounts: [companyA],
     });
 
@@ -453,7 +458,7 @@ describe('runSync', () => {
     enableSqlConfig();
     const { upsertAccount, upsertScore } = setupStoreMocks({
       mappings: [
-        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
+        { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' },
       ],
     });
 
@@ -479,7 +484,7 @@ describe('runSync', () => {
     enableSqlConfig();
     const mocks = setupStoreMocks({
       mappings: [
-        { accountId: 'hs-001', amplitudeAlias: 'old-alias' }, // existing — preserved even if SQL differs
+        { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'old-alias' }, // existing — preserved even if SQL differs
       ],
       // hs-002 has no mapping — SQL alias will be created
     });
@@ -487,8 +492,8 @@ describe('runSync', () => {
     mockFetchAccountsFromSql.mockResolvedValue({
       accounts: [COMPANY_A, COMPANY_B],
       aliases: new Map([
-        ['hs-001', 'new-alias'],  // SQL differs but existing mapping preserved
-        ['hs-002', 'beta'],       // no existing mapping — will be created
+        ['a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'new-alias'],  // SQL differs but existing mapping preserved
+        ['b2c3d4e5-f6a7-8901-bcde-f12345678901', 'beta'],       // no existing mapping — will be created
       ]),
       licences: new Map(),
     });
@@ -500,7 +505,7 @@ describe('runSync', () => {
     const mappingStoreInstance = MockMappingStore.mock.results[0].value;
     const upsertMappingCalls = mappingStoreInstance.upsertMapping.mock.calls;
     expect(upsertMappingCalls.length).toBe(1);
-    expect(upsertMappingCalls[0][0]).toBe('hs-002');
+    expect(upsertMappingCalls[0][0]).toBe('b2c3d4e5-f6a7-8901-bcde-f12345678901');
     expect(upsertMappingCalls[0][2]).toBe('beta');
 
     disableSqlConfig();
@@ -510,7 +515,7 @@ describe('runSync', () => {
     enableSqlConfig();
     setupStoreMocks({
       mappings: [
-        { accountId: 'hs-001', amplitudeAlias: 'manual-alias' },
+        { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'manual-alias' },
       ],
     });
 
@@ -530,15 +535,15 @@ describe('runSync', () => {
     disableSqlConfig();
   });
 
-  it('SQL data source: auto-syncs licences when no manual override exists', async () => {
+  it('SQL data source: always overwrites licences from SQL', async () => {
     enableSqlConfig();
-    const storedA: Account = { ...COMPANY_A, licenses: null }; // no manual override
-    const storedB: Account = { ...COMPANY_B, licenses: 50 };   // manual override exists
+    const storedA: Account = { ...COMPANY_A, licenses: null };   // no value yet
+    const storedB: Account = { ...COMPANY_B, licenses: 50 };     // existing value — will be overwritten
 
     setupStoreMocks({
       mappings: [
-        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
-        { accountId: 'hs-002', amplitudeAlias: 'beta' },
+        { accountId: COMPANY_A.accountId, amplitudeAlias: 'alpha' },
+        { accountId: COMPANY_B.accountId, amplitudeAlias: 'beta' },
       ],
       storedAccounts: [storedA, storedB],
     });
@@ -547,20 +552,22 @@ describe('runSync', () => {
       accounts: [COMPANY_A, COMPANY_B],
       aliases: new Map(),
       licences: new Map([
-        ['hs-001', 100],
-        ['hs-002', 200],
+        [COMPANY_A.accountId, 100],
+        [COMPANY_B.accountId, 200],
       ]),
     });
     mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
 
     await runSync();
 
-    // updateLicenses should only be called for hs-001 (no manual override)
+    // updateLicenses called for BOTH accounts — no sticky guard
     const accountStoreInstance = MockAccountStore.mock.results[0].value;
     const updateCalls = accountStoreInstance.updateLicenses.mock.calls;
-    expect(updateCalls.length).toBe(1);
-    expect(updateCalls[0][0]).toBe('hs-001');
+    expect(updateCalls.length).toBe(2);
+    expect(updateCalls[0][0]).toBe(COMPANY_A.accountId);
     expect(updateCalls[0][1]).toBe(100);
+    expect(updateCalls[1][0]).toBe(COMPANY_B.accountId);
+    expect(updateCalls[1][1]).toBe(200);
 
     disableSqlConfig();
   });
@@ -586,8 +593,8 @@ describe('runSync', () => {
     const storedB: Account = { ...COMPANY_B, hidden: false };
     const { upsertScore } = setupStoreMocks({
       mappings: [
-        { accountId: 'hs-001', amplitudeAlias: 'alpha' },
-        { accountId: 'hs-002', amplitudeAlias: 'beta' },
+        { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' },
+        { accountId: 'b2c3d4e5-f6a7-8901-bcde-f12345678901', amplitudeAlias: 'beta' },
       ],
       storedAccounts: [storedA, storedB],
     });
@@ -605,13 +612,13 @@ describe('runSync', () => {
     expect(result.scored).toBe(1);
     expect(upsertScore).toHaveBeenCalledTimes(1);
     expect(upsertScore).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId: 'hs-002' })
+      expect.objectContaining({ accountId: 'b2c3d4e5-f6a7-8901-bcde-f12345678901' })
     );
   });
 
   it('all-zero signals with invalid alias → aliasStatus not-found, score null', async () => {
     const { upsertScore } = setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'bad-alias' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'bad-alias' }],
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
@@ -636,7 +643,7 @@ describe('runSync', () => {
 
   it('all-zero signals with valid alias → score 0, aliasStatus valid', async () => {
     const { upsertScore } = setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'real-alias' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'real-alias' }],
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
@@ -664,7 +671,7 @@ describe('runSync', () => {
     disableIntercomConfig();
 
     setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' }],
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
@@ -681,7 +688,7 @@ describe('runSync', () => {
     const companyWithDomain: Account = { ...COMPANY_A, domain: 'alpha.com' };
 
     const { upsertScore } = setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' }],
       storedAccounts: [companyWithDomain],
     });
 
@@ -737,7 +744,7 @@ describe('runSync', () => {
     enableIntercomConfig();
 
     setupStoreMocks({
-      mappings: [{ accountId: 'hs-001', amplitudeAlias: 'alpha' }],
+      mappings: [{ accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', amplitudeAlias: 'alpha' }],
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);

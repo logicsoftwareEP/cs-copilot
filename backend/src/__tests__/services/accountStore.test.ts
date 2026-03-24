@@ -21,7 +21,8 @@ jest.mock('@azure/data-tables', () => ({
 }));
 
 const SAMPLE: Account = {
-  accountId: 'hs-123',
+  accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  hubspotCompanyId: '123',
   accountName: 'Acme Corp',
   csmName: 'Jane Smith',
   csmEmail: 'jane@example.com',
@@ -47,7 +48,7 @@ describe('AccountStore', () => {
     expect(mockUpsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
         partitionKey: 'accounts',
-        rowKey: 'hs-123',
+        rowKey: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
         accountName: 'Acme Corp',
         arr: 48000,
       }),
@@ -58,7 +59,7 @@ describe('AccountStore', () => {
   it('listAccounts returns mapped accounts', async () => {
     const entity = {
       partitionKey: 'accounts',
-      rowKey: 'hs-123',
+      rowKey: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
       accountName: 'Acme Corp',
       csmName: 'Jane Smith',
       csmEmail: 'jane@example.com',
@@ -74,7 +75,7 @@ describe('AccountStore', () => {
 
     const results = await store.listAccounts();
     expect(results).toHaveLength(1);
-    expect(results[0].accountId).toBe('hs-123');
+    expect(results[0].accountId).toBe('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
     expect(results[0].accountName).toBe('Acme Corp');
   });
 
@@ -87,7 +88,7 @@ describe('AccountStore', () => {
   it('getById returns account for existing entity', async () => {
     mockGetEntity.mockResolvedValue({
       partitionKey: 'accounts',
-      rowKey: 'hs-123',
+      rowKey: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
       accountName: 'Acme Corp',
       csmName: 'Jane Smith',
       csmEmail: 'jane@example.com',
@@ -97,7 +98,7 @@ describe('AccountStore', () => {
       syncedAt: '2026-03-11T02:00:00.000Z',
     });
 
-    const result = await store.getById('hs-123');
-    expect(result?.accountId).toBe('hs-123');
+    const result = await store.getById('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
+    expect(result?.accountId).toBe('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
   });
 });
