@@ -128,8 +128,9 @@ export async function searchActiveCompanies(
       }
 
       results.push({
-        accountId:   result.id,
-        accountName: result.properties.name ?? '',
+        accountId:        result.id,
+        hubspotCompanyId: result.id,
+        accountName:      result.properties.name ?? '',
         csmName,
         csmEmail,
         arr:         Number(result.properties.arr__annual_recurring_revenue_ ?? 0),

@@ -4,6 +4,7 @@ import { Account } from '../types';
 interface AccountEntity {
   partitionKey: string;
   rowKey: string;
+  hubspotCompanyId: string;
   accountName: string;
   csmName: string;
   csmEmail: string;
@@ -27,6 +28,7 @@ function toEntity(account: Account): Omit<AccountEntity, 'licenses'> {
   const entity: Record<string, unknown> = {
     partitionKey: 'accounts',
     rowKey: account.accountId,
+    hubspotCompanyId: account.hubspotCompanyId,
     accountName: account.accountName,
     csmName: account.csmName,
     csmEmail: account.csmEmail,
@@ -44,6 +46,7 @@ function toEntity(account: Account): Omit<AccountEntity, 'licenses'> {
 function fromEntity(entity: AccountEntity): Account {
   return {
     accountId: entity.rowKey,
+    hubspotCompanyId: entity.hubspotCompanyId ?? '',
     accountName: entity.accountName,
     csmName: entity.csmName,
     csmEmail: entity.csmEmail,

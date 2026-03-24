@@ -2,6 +2,7 @@
 // RowKey in Table Storage = accountId (stable, never changes).
 export interface Account {
   accountId: string;
+  hubspotCompanyId: string;
   accountName: string;
   csmName: string;
   csmEmail: string;

@@ -87,6 +87,7 @@ async function queryWithRetry<T>(
 }
 
 interface ClientsOverviewRow {
+  ClientId: string | null;
   HubSpotCompanyId: number | null;
   Company: string | null;
   Alias: string | null;
@@ -119,7 +120,7 @@ export async function fetchAccountsFromSql(
 
   const result = await queryWithRetry<ClientsOverviewRow>(
     p,
-    `SELECT HubSpotCompanyId, Company, Alias, HubspotSuccessManager,
+    `SELECT ClientId, HubSpotCompanyId, Company, Alias, HubspotSuccessManager,
             ACV, ContractRenewalDate, Licenses, Email, BillingEmail, IsCanceled
      FROM [analytics].[ClientsOverview]
      WHERE IsCanceled = 0`
@@ -130,9 +131,10 @@ export async function fetchAccountsFromSql(
   const licences = new Map<string, number>();
 
   for (const row of result.recordset) {
-    if (!row.HubSpotCompanyId) continue; // skip rows without HubSpot ID
+    if (!row.ClientId) continue; // skip rows without ClientId
 
-    const accountId = String(row.HubSpotCompanyId);
+    const accountId = row.ClientId.toLowerCase();
+    const hubspotCompanyId = row.HubSpotCompanyId ? String(row.HubSpotCompanyId) : '';
     const domain = extractDomain(row.Email) || extractDomain(row.BillingEmail);
     const renewalDate = row.ContractRenewalDate
       ? row.ContractRenewalDate.toISOString().split('T')[0]
@@ -140,6 +142,7 @@ export async function fetchAccountsFromSql(
 
     accounts.push({
       accountId,
+      hubspotCompanyId,
       accountName: row.Company ?? '',
       csmName: row.HubspotSuccessManager ?? '',
       csmEmail: '', // SQL view has CSM name only, no email
