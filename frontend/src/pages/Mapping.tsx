@@ -236,7 +236,7 @@ export default function Mapping() {
             </div>
             <p className="text-base font-semibold text-bv-ink mb-1">No accounts to map</p>
             <p className="text-sm text-bv-muted mb-5">
-              <Link to="/" className="text-bv-primary hover:text-bv-hover">Run a sync</Link> to pull accounts from HubSpot first.
+              <Link to="/" className="text-bv-primary hover:text-bv-hover">Run a sync</Link> to pull accounts first.
             </p>
           </div>
         )}
@@ -261,7 +261,7 @@ export default function Mapping() {
               <thead>
                 <tr className="bg-bv-surface border-b border-bv-divider text-left">
                   <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-bv-subtle">
-                    HubSpot Account
+                    Account
                   </th>
                   <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-bv-subtle">
                     Amplitude Alias

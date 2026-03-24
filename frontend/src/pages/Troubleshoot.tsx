@@ -154,7 +154,7 @@ function AccountPanel({ accountId, onClose }: { accountId: string; onClose: () =
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-[16px] font-bold text-obs-bright">{detail.accountName}</h3>
-          <p className="text-[13px] text-obs-ghost font-mono">{detail.accountId} · {detail.domain || 'no domain'}</p>
+          <p className="text-[13px] text-obs-ghost font-mono">{detail.hubspotCompanyId || detail.accountId} · {detail.domain || 'no domain'}</p>
         </div>
         <button onClick={onClose} className="text-obs-ghost hover:text-obs-text text-[18px]">×</button>
       </div>

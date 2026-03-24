@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { getAccounts, triggerSync, getAccountDetail, updateAccountLicenses, updateAccountArr, updateAccountHidden, upsertMapping, deleteMapping, refreshAccountScore } from '../services/api';
+import { getAccounts, triggerSync, getSyncStatus, getAccountDetail, updateAccountLicenses, updateAccountArr, updateAccountHidden, upsertMapping, deleteMapping, refreshAccountScore } from '../services/api';
 import { AccountSummary, AccountDetail, HealthTier, ChurnScore, IntercomDetails } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -610,7 +610,7 @@ function DetailPanel({ summary, onClose, onScoreRefreshed }: { summary: AccountS
                   { label: 'ARR',        value: formatArr(summary.arr) },
                   { label: 'Renewal',    value: renewal.label, color: RENEWAL_COLOURS[renewal.urgency] },
                   { label: 'Owner',      value: summary.csmName || '—' },
-                  { label: 'HubSpot ID', value: summary.accountId, mono: true },
+                  { label: 'HubSpot ID', value: summary.hubspotCompanyId, mono: true },
                 ].map(({ label, value, color, mono }) => (
                   <div key={label} className="flex items-center justify-between px-4 py-2.5 text-[14px]">
                     <dt className="text-obs-ghost">{label}</dt>
@@ -733,15 +733,57 @@ export default function Portfolio() {
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const syncTriggeredAt = useRef<string | null>(null);
+
+  // Check sync status on mount — if a sync is already running, resume polling
+  useEffect(() => {
+    getSyncStatus().then(status => {
+      if (status.status === 'running') {
+        setSyncing(true);
+        syncTriggeredAt.current = status.startedAt ?? new Date().toISOString();
+        startPolling();
+      }
+    }).catch(() => {});
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function startPolling() {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const status = await getSyncStatus();
+        // Ignore stale completed/failed from before this sync was triggered
+        const isStale = syncTriggeredAt.current &&
+          status.completedAt && status.completedAt < syncTriggeredAt.current;
+        if (isStale) return;
+
+        if (status.status === 'completed') {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          setSyncing(false);
+          await fetchAccounts();
+        } else if (status.status === 'failed') {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          setSyncing(false);
+          alert(`Sync failed: ${status.error ?? 'unknown error'}`);
+        }
+      } catch {
+        // Ignore transient poll errors
+      }
+    }, 5000);
+  }
+
   async function handleSync() {
     setSyncing(true);
     try {
+      syncTriggeredAt.current = new Date().toISOString();
       await triggerSync();
-      await fetchAccounts();
+      startPolling();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Sync failed');
-    } finally {
       setSyncing(false);
+      alert(err instanceof Error ? err.message : 'Sync failed');
     }
   }
 
@@ -1117,7 +1159,7 @@ export default function Portfolio() {
               </svg>
             </div>
             <p className="text-[16px] font-semibold text-obs-bright mb-1">No accounts yet</p>
-            <p className="text-[14px] text-obs-dim mb-6">Run a sync to pull active clients from HubSpot.</p>
+            <p className="text-[14px] text-obs-dim mb-6">Run a sync to pull active clients.</p>
             {!isCSM && (
               <button
                 onClick={handleSync}
