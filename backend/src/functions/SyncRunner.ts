@@ -122,14 +122,13 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
     const storedAccounts = await accountStore.listAccounts();
     const storedMap = new Map(storedAccounts.map(a => [a.accountId, a]));
 
-    // Apply SQL licences where no manual override exists
+    // Apply SQL licences — always overwrite with SQL values (source of truth)
     if (sqlResult?.licences.size) {
       let licCount = 0;
       for (const [accountId, licenceCount] of sqlResult.licences) {
         const stored = storedMap.get(accountId);
-        if (stored && (stored.licenses === null || stored.licenses === 0)) {
+        if (stored) {
           await accountStore.updateLicenses(accountId, licenceCount);
-          // Update the in-memory map so scoring uses the new value
           stored.licenses = licenceCount;
           licCount++;
         }
@@ -221,6 +220,11 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
     const yesterdayISO = yesterday.toISOString().slice(0, 10);
     const yesterdayScores = await scoreStore.getAllScoresForDate(yesterdayISO);
 
+    // Load today's scores to skip accounts already scored with valid Amplitude data.
+    // On re-sync, only re-query accounts that failed (score=0 with valid alias) or are new.
+    const todayScores = await scoreStore.getAllScoresForDate(todayISO);
+    let skipped = 0;
+
     let scored = 0;
     let failed = 0;
     const errors: string[] = [];
@@ -234,6 +238,16 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
       const amplitudeAlias = mappingMap.get(company.accountId);
       const accountDomain = storedMap.get(company.accountId)?.domain ?? '';
       const zendeskData = accountDomain ? (zendeskMap.get(accountDomain) ?? null) : null;
+
+      // Skip Amplitude re-query if this account already has a valid score today
+      // (non-null score with MAU data). Zendesk/Intercom penalties still get refreshed.
+      if (amplitudeAlias) {
+        const existing = todayScores.get(company.accountId);
+        if (existing && existing.score !== null && existing.score > 0) {
+          skipped++;
+          continue;
+        }
+      }
 
       if (!amplitudeAlias) {
         // No Amplitude mapping — upsert a placeholder score
@@ -381,6 +395,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
       }
     }
 
+    if (skipped > 0) log(`Skipped ${skipped} accounts with existing valid scores`);
     return { synced: companies.length, scored, failed, zendeskFetched, intercomFetched, errors };
   } catch (err: any) {
     const msg = err?.message ?? String(err);
