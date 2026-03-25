@@ -1,6 +1,6 @@
 # CS Copilot - Progress
 
-## Status: Live — Amplitude rate limiting fix + async sync (2026-03-22)
+## Status: Live — ClientId migration + license fix (2026-03-24)
 
 **Spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 **Plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
@@ -39,12 +39,32 @@
 
 ---
 
-## Validation Snapshot (2026-03-22)
+### 2026-03-24 — ClientId migration: fix license collisions + split multi-division accounts
+
+**Problem:** The SQL view `[analytics].[ClientsOverview]` has multiple rows per `HubSpotCompanyId` when a company has separate divisions (e.g., Cornell University has 2 active divisions). The old code used `HubSpotCompanyId` as `accountId`, causing:
+- 8 multi-division companies collided (last-write-wins for name, alias, licenses)
+- 49 accounts had stale/incorrect license counts due to a "sticky" guard that never updated licenses once set
+- Example: National Research Council had 132 licenses in storage but SQL said 20
+
+**Fix:** Switched `accountId` from `HubSpotCompanyId` (numeric) to `ClientId` (GUID, unique per row in SQL view).
+- Each division now gets its own account, alias, license count, and health score
+- `hubspotCompanyId` retained as a non-key informational field
+- License sync made unconditional — SQL is the source of truth, always overwritten on nightly sync
+- Old numeric-keyed rows cleaned up from all tables (270 accounts, 286 mappings, 2,773 scores)
+
+**Result:** 281 accounts (was 268), all GUID-keyed. Cornell: 2 entries (Dining Team = 4 lic, SSIT = 70 lic). NRC: 20 licenses (corrected from 132).
+
+**Files changed:** `sqlClient.ts`, `types.ts` (both), `accountStore.ts`, `SyncRunner.ts`, `hubspotClient.ts`, `Portfolio.tsx`, `Troubleshoot.tsx`, `Mapping.tsx`, `SyncRunner.test.ts`, `accountStore.test.ts`
+
+**Spec:** `docs/superpowers/specs/2026-03-24-clientid-migration-design.md`
+
+## Validation Snapshot (2026-03-24)
 
 - Backend TypeScript build: **clean**
 - Backend tests: **178/178 passing** across 13 suites
 - Frontend TypeScript + Vite build: **clean**
 - Backend + frontend deployed to Azure
+- 281 accounts, all GUID-keyed, license counts verified against SQL
 
 ### 2026-03-22 — Amplitude rate limiting fix + async sync with status polling
 
@@ -176,9 +196,9 @@ The sync was making ~2700 API calls per run (195 accounts × 14 calls each), far
 
 ## Architecture Summary
 
-**Azure SWA (Entra ID auth)** → **React frontend** (role-based UI) → **Azure Functions** (auth middleware + read API + mapping CRUD) → **Azure Table Storage** (5 tables: `accounts`, `amplitudemapping`, `churnscores`, `users`, `intercomscores`).
+**Azure SWA (Entra ID auth)** → **React frontend** (role-based UI) → **Azure Functions** (auth middleware + read API + mapping CRUD) → **Azure Table Storage** (6 tables: `accounts`, `amplitudemapping`, `churnscores`, `users`, `intercomscores`, `syncstatus`).
 
-**SyncRunner** fetches SQL Server accounts + Zendesk bulk tickets + Intercom conversations + Amplitude signals → computes health scores → writes to Table Storage. Aliases and licences auto-synced from SQL.
+**SyncRunner** fetches SQL Server accounts (keyed by `ClientId` GUID) + Zendesk bulk tickets + Intercom conversations + Amplitude signals → computes health scores → writes to Table Storage. Aliases and licences auto-synced from SQL. Each division/department is a separate account.
 
 Sync runs: (a) nightly timer trigger at 2 AM UTC, (b) on-demand via `POST /api/sync` (admin only).
 

@@ -40,7 +40,7 @@ Entry point `src/index.ts` imports all function modules as side effects.
 - `SKIP_AUTH` env var for local dev bypass
 
 **Clients** (`src/clients/`):
-- `sqlClient.ts` - SQL Server: fetches accounts from `[analytics].[ClientsOverview]` view, extracts aliases and licences. Connection pooling + retry for transient errors.
+- `sqlClient.ts` - SQL Server: fetches accounts from `[analytics].[ClientsOverview]` view using `ClientId` (GUID) as `accountId`. Extracts aliases and licences. Connection pooling + retry for transient errors.
 - `hubspotClient.ts` - **DISABLED**: HubSpot CRM API. Retained for rollback via `DATA_SOURCE=hubspot`.
 - `amplitudeClient.ts` - Amplitude Segmentation API: MAU trend, feature breadth (12 categories). Uses `gp:alias` user property with case-sensitive `is` filter. All requests go through `amplitudeFetch()` — concurrency limiter (max 4) + exponential backoff retry on 429. Feature queries skipped for accounts with no active users. Date windows pinned to UTC midnight for deterministic results.
 - `zendeskClient.ts` - Fetches ALL open/pending tickets in bulk (2-3 API calls), aggregates by requester email domain. No per-domain search.
@@ -104,7 +104,7 @@ Six Azure Table Storage tables:
 
 `Account` → joined with latest `ChurnScore` + `AmplitudeMapping` → returned as `AccountSummary`.
 
-Types renamed from `HubspotAccount`/`hubspotId` to `Account`/`accountId` (2026-03-16).
+Types renamed from `HubspotAccount`/`hubspotId` to `Account`/`accountId` (2026-03-16). `accountId` switched from `HubSpotCompanyId` (numeric) to `ClientId` (GUID, lowercased) on 2026-03-24 — each division/department is now a separate account. `hubspotCompanyId` retained as a non-key informational field.
 
 `HealthTier`: `'healthy' | 'watch' | 'at-risk' | 'critical'` - defined in both `backend/src/types.ts` and `frontend/src/types.ts` (kept in sync manually).
 
@@ -112,7 +112,9 @@ Types renamed from `HubspotAccount`/`hubspotId` to `Account`/`accountId` (2026-0
 
 Primary data source: SQL Server view `[analytics].[ClientsOverview]` on `ffzf1thpek.database.windows.net` / `AccountsControl` database. Controlled by `DATA_SOURCE` env var (default: `sql`). Set `DATA_SOURCE=hubspot` to rollback to HubSpot.
 
-SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only creates new mappings — existing mappings are never overwritten (to preserve case corrections for Amplitude's case-sensitive matching).
+SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only creates new mappings — existing mappings are never overwritten (to preserve case corrections for Amplitude's case-sensitive matching). Licence counts are always overwritten from SQL (source of truth) — manual PATCH edits are temporary overrides reverted on next sync.
+
+**Account key:** `accountId` is the `ClientId` GUID from the SQL view (lowercased). Each row in `[analytics].[ClientsOverview]` is a separate account (divisions/departments within the same company get their own account). The old `HubSpotCompanyId` is stored as `hubspotCompanyId` for reference.
 
 ## Env vars
 
@@ -135,4 +137,5 @@ SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only cr
 
 Full spec: `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 Auth spec: `docs/superpowers/specs/2026-03-17-auth-and-user-management-design.md`
+ClientId migration spec: `docs/superpowers/specs/2026-03-24-clientid-migration-design.md`
 Progress: `progress.md`

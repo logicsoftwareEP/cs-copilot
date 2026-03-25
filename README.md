@@ -41,7 +41,7 @@ React Frontend (Azure Static Web Apps, Entra ID auth)
 
 | Source | Used for |
 |--------|----------|
-| SQL Server | Account roster, ARR, renewal date, CSM assignment, domain, aliases, licences |
+| SQL Server | Account roster (keyed by `ClientId` GUID), ARR, renewal date, CSM assignment, domain, aliases, licences |
 | Amplitude | DAU/WAU trend, MAU (monthly active users), feature breadth (12 categories). Rate-limited: max 4 concurrent requests, retry with backoff on 429 |
 | Zendesk | Ticket volume, open tickets, severity → penalty deduction |
 | Intercom | Conversation volume, open count, response time → penalty + engagement bonus |
@@ -79,7 +79,7 @@ When licences are not set, score is normalised out of 40 (activity + features). 
 
 Six tables:
 
-- **`accounts`** — PartitionKey: `"accounts"`, RowKey: account ID. Synced nightly from SQL Server.
+- **`accounts`** — PartitionKey: `"accounts"`, RowKey: `ClientId` GUID (lowercased). Synced nightly from SQL Server. Each division/department is a separate account.
 - **`amplitudemapping`** — PartitionKey: `"mapping"`, RowKey: account ID. Auto-synced from SQL, manually correctable.
 - **`churnscores`** — PartitionKey: account ID, RowKey: `YYYY-MM-DD`. Includes Zendesk + Intercom penalty/bonus details.
 - **`users`** — PartitionKey: `"users"`, RowKey: email (lowercase). Three roles: admin/supervisor/csm.
@@ -144,4 +144,6 @@ npm run build        # tsc + vite build
 - **Auth spec:** `docs/superpowers/specs/2026-03-17-auth-and-user-management-design.md`
 - **Intercom spec:** `docs/superpowers/specs/2026-03-21-intercom-integration-design.md`
 - **Intercom plan:** `docs/superpowers/plans/2026-03-21-intercom-integration.md`
+- **ClientId migration spec:** `docs/superpowers/specs/2026-03-24-clientid-migration-design.md`
+- **ClientId migration plan:** `docs/superpowers/plans/2026-03-24-clientid-migration.md`
 - **Progress:** `progress.md`
