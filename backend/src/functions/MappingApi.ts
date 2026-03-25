@@ -99,7 +99,7 @@ app.http('MappingCollection', {
     if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
     try {
       const user = await authenticateRequest(req);
-      requireRole(user, 'admin', 'supervisor');
+      requireRole(user, 'admin', 'supervisor', 'csm');
 
       if (req.method === 'POST') return upsertMapping(req, context);
       return listMappings(req, context);
@@ -118,7 +118,7 @@ app.http('MappingItem', {
     if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
     try {
       const user = await authenticateRequest(req);
-      requireRole(user, 'admin', 'supervisor');
+      requireRole(user, 'admin', 'supervisor', 'csm');
       return deleteMapping(req, context);
     } catch (err) {
       if (err instanceof AuthError) return { status: (err as AuthError).status, headers: CORS_HEADERS, body: (err as AuthError).message };

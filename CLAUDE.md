@@ -29,7 +29,7 @@ Entry point `src/index.ts` imports all function modules as side effects.
 
 **Functions** (`src/functions/`):
 - `AccountsApi.ts` - `GET /api/accounts` (list, CSM-filtered), `GET /api/accounts/{id}` (detail), `PATCH /api/accounts/{id}` (admin/supervisor: update ARR/licences). Auth required on all.
-- `MappingApi.ts` - `GET /api/mapping`, `POST /api/mapping`, `DELETE /api/mapping/{id}`. Admin/supervisor only.
+- `MappingApi.ts` - `GET /api/mapping`, `POST /api/mapping`, `DELETE /api/mapping/{id}`. All authenticated roles (admin/supervisor/csm).
 - `SyncTrigger.ts` - `POST /api/sync` (admin only, returns 202, fire-and-forget), `GET /api/sync` (sync status). Uses `SyncStatusStore` to track running/completed/failed state.
 - `SyncRunner.ts` - Timer trigger (2 AM UTC daily) + `runSync()` export. Orchestrates: SQL Server → accounts table, Amplitude → health scores, Zendesk → penalties.
 - `UsersApi.ts` - `GET /api/me` (current user), `GET /api/users`, `POST /api/users`, `DELETE /api/users?email=...`. Admin only (except `/api/me`).

@@ -21,9 +21,9 @@ Azure Functions (backend — all reads + writes)
   GET /api/accounts        → List accounts + today's score (CSM-filtered)
   GET /api/accounts/:id    → Single account + 7-day history + score breakdown
   PATCH /api/accounts/:id  → Update licence count / ARR / hidden flag
-  GET /api/mapping         → List all Amplitude mappings
-  POST /api/mapping        → Create/update mapping
-  DELETE /api/mapping/:id  → Remove mapping
+  GET /api/mapping         → List all Amplitude mappings (all roles)
+  POST /api/mapping        → Create/update mapping (all roles)
+  DELETE /api/mapping/:id  → Remove mapping (all roles)
   POST /api/sync           → Trigger on-demand sync (admin only, returns 202)
   GET  /api/sync           → Sync status (running/completed/failed/idle)
   GET /api/me              → Current user info
