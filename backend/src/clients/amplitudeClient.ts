@@ -19,22 +19,23 @@ interface SegmentationResponse {
 }
 
 /**
- * Convert Date to Amplitude date format (YYYYMMDD)
+ * Convert Date to Amplitude date format (YYYYMMDD) using UTC components.
  */
-function toAmplitudeDate(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+export function toAmplitudeDate(d: Date): string {
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
   return `${year}${month}${day}`;
 }
 
 /**
- * Get a Date n days before today
+ * Get a Date n days before today, pinned to UTC midnight.
+ * Eliminates score variability from shifting query windows across syncs.
  */
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
+export function daysAgo(n: number): Date {
+  const now = new Date();
+  const todayMidnightUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return new Date(todayMidnightUTC - n * 24 * 60 * 60 * 1000);
 }
 
 /**
@@ -44,6 +45,60 @@ function buildBasicAuth(apiKey: string, secretKey: string): string {
   const credentials = `${apiKey}:${secretKey}`;
   return `Basic ${Buffer.from(credentials).toString('base64')}`;
 }
+
+// ── Rate-limited fetch for Amplitude API ─────────────────────────────────────
+
+const MAX_CONCURRENT = 4;   // Amplitude allows 5 concurrent; stay under
+const MAX_RETRIES = 4;
+const BASE_DELAY_MS = 5000; // 5s base, exponential: 5s, 10s, 20s, 40s
+
+let activeRequests = 0;
+const queue: Array<{ resolve: () => void }> = [];
+
+async function acquireSlot(): Promise<void> {
+  if (activeRequests < MAX_CONCURRENT) {
+    activeRequests++;
+    return;
+  }
+  return new Promise(resolve => queue.push({ resolve }));
+}
+
+function releaseSlot(): void {
+  if (queue.length > 0) {
+    const next = queue.shift()!;
+    next.resolve();
+  } else {
+    activeRequests--;
+  }
+}
+
+/**
+ * Fetch with concurrency limiting and retry on 429.
+ * All Amplitude API calls MUST use this instead of raw fetch.
+ */
+async function amplitudeFetch(url: string, headers: Record<string, string>): Promise<Response> {
+  await acquireSlot();
+  try {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const response = await fetch(url, { method: 'GET', headers });
+      if (response.status !== 429) return response;
+
+      // 429: wait with exponential backoff before retrying
+      if (attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        return response; // exhausted retries, return the 429
+      }
+    }
+    // unreachable, but TypeScript needs it
+    throw new Error('unreachable');
+  } finally {
+    releaseSlot();
+  }
+}
+
+// ── API functions ────────────────────────────────────────────────────────────
 
 /**
  * Fetch MAU trend: compares current 30-day unique users vs prior 30-day unique users.
@@ -56,10 +111,9 @@ async function fetchMauTrend(
   accountAlias: string,
   accountProperty: string
 ): Promise<{ trend: number | null; currentMAU: number | null }> {
-  const [currentMAU, priorMAU] = await Promise.all([
-    fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty),         // days 1–30
-    fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty, 60, 31), // days 31–60
-  ]);
+  // Sequential to reduce concurrent load
+  const currentMAU = await fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty);
+  const priorMAU = await fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty, 60, 31);
 
   if (currentMAU === null || priorMAU === null || priorMAU === 0) {
     return { trend: null, currentMAU };
@@ -104,14 +158,9 @@ async function fetchMonthlyActiveUsers(
       end: endDate,
     });
 
-    const response = await fetch(
+    const response = await amplitudeFetch(
       `https://amplitude.com/api/2/events/segmentation?${params}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: buildBasicAuth(apiKey, secretKey),
-        },
-      }
+      { Authorization: buildBasicAuth(apiKey, secretKey) }
     );
 
     if (!response.ok) {
@@ -164,9 +213,9 @@ async function checkFeatureUsed(
       end: toAmplitudeDate(daysAgo(1)),
     });
 
-    const response = await fetch(
+    const response = await amplitudeFetch(
       `https://amplitude.com/api/2/events/segmentation?${params}`,
-      { headers: { Authorization: buildBasicAuth(apiKey, secretKey) } }
+      { Authorization: buildBasicAuth(apiKey, secretKey) }
     );
 
     if (!response.ok) return false;
@@ -182,6 +231,7 @@ async function checkFeatureUsed(
 
 /**
  * Fetch feature breadth: how many feature categories the account used in the last 30 days.
+ * Calls are serialized to avoid bursting the Amplitude rate limit.
  */
 async function fetchFeatureBreadth(
   apiKey: string,
@@ -191,14 +241,12 @@ async function fetchFeatureBreadth(
   featureEvents: FeatureEvent[]
 ): Promise<FeatureBreadth | null> {
   try {
-    const results = await Promise.all(
-      featureEvents.map(async fe => ({
-        category: fe.category,
-        used: await checkFeatureUsed(apiKey, secretKey, accountAlias, accountProperty, fe.eventType),
-      }))
-    );
-
-    const used = results.filter(r => r.used).map(r => r.category);
+    // Sequential to stay within rate limits (each call goes through amplitudeFetch queue)
+    const used: string[] = [];
+    for (const fe of featureEvents) {
+      const isUsed = await checkFeatureUsed(apiKey, secretKey, accountAlias, accountProperty, fe.eventType);
+      if (isUsed) used.push(fe.category);
+    }
     return { used, total: featureEvents.length };
   } catch (error) {
     console.warn('Error fetching feature breadth:', error);
@@ -234,9 +282,9 @@ export async function validateAlias(
       end: toAmplitudeDate(daysAgo(1)),
     });
 
-    const response = await fetch(
+    const response = await amplitudeFetch(
       `https://amplitude.com/api/2/events/segmentation?${params}`,
-      { headers: { Authorization: buildBasicAuth(apiKey, secretKey) } }
+      { Authorization: buildBasicAuth(apiKey, secretKey) }
     );
 
     if (!response.ok) {
@@ -255,7 +303,9 @@ export async function validateAlias(
 }
 
 /**
- * Fetch all Amplitude signals for an account
+ * Fetch all Amplitude signals for an account.
+ * MAU trend runs first; feature breadth is skipped when there are no active users
+ * (saves 12 API calls per inactive account).
  */
 export async function fetchSignals(
   apiKey: string,
@@ -264,10 +314,18 @@ export async function fetchSignals(
   accountProperty: string,
   featureEvents: FeatureEvent[]
 ): Promise<AmplitudeSignals> {
-  const [mauResult, featureBreadth] = await Promise.all([
-    fetchMauTrend(apiKey, secretKey, accountAlias, accountProperty),
-    fetchFeatureBreadth(apiKey, secretKey, accountAlias, accountProperty, featureEvents),
-  ]);
+  const mauResult = await fetchMauTrend(apiKey, secretKey, accountAlias, accountProperty);
+
+  // Skip feature queries if no active users — no point checking 12 events
+  if (!mauResult.currentMAU || mauResult.currentMAU === 0) {
+    return {
+      dauWauTrend: mauResult.trend,
+      monthlyActiveUsers: mauResult.currentMAU,
+      featureBreadth: { used: [], total: featureEvents.length },
+    };
+  }
+
+  const featureBreadth = await fetchFeatureBreadth(apiKey, secretKey, accountAlias, accountProperty, featureEvents);
 
   return {
     dauWauTrend: mauResult.trend,

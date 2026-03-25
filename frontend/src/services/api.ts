@@ -68,6 +68,21 @@ export async function triggerSync(): Promise<void> {
   if (!res.ok) throw new Error(`Sync trigger failed: ${res.status}`);
 }
 
+export interface SyncStatus {
+  status: 'idle' | 'running' | 'completed' | 'failed';
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
+export async function getSyncStatus(): Promise<SyncStatus> {
+  const res = await fetch(withCode(`${BASE_URL}/sync`), {
+    headers: authHeaders(),
+  });
+  if (!res.ok) return { status: 'idle' };
+  return res.json();
+}
+
 export async function updateAccountLicenses(accountId: string, licenses: number | null): Promise<void> {
   const res = await fetch(withCode(`${BASE_URL}/accounts/${encodeURIComponent(accountId)}`), {
     method: 'PATCH',
