@@ -24,7 +24,8 @@ Azure Functions (backend — all reads + writes)
   GET /api/mapping         → List all Amplitude mappings
   POST /api/mapping        → Create/update mapping
   DELETE /api/mapping/:id  → Remove mapping
-  POST /api/sync           → Trigger on-demand sync (admin only)
+  POST /api/sync           → Trigger on-demand sync (admin only, returns 202)
+  GET  /api/sync           → Sync status (running/completed/failed/idle)
   GET /api/me              → Current user info
   GET /api/users           → List users (admin only)
   POST /api/users          → Create user (admin only)
@@ -41,10 +42,10 @@ React Frontend (Azure Static Web Apps, Entra ID auth)
 | Source | Used for |
 |--------|----------|
 | SQL Server | Account roster, ARR, renewal date, CSM assignment, domain, aliases, licences |
-| Amplitude | DAU/WAU trend, MAU (monthly active users), feature breadth (12 categories) |
+| Amplitude | DAU/WAU trend, MAU (monthly active users), feature breadth (12 categories). Rate-limited: max 4 concurrent requests, retry with backoff on 429 |
 | Zendesk | Ticket volume, open tickets, severity → penalty deduction |
 | Intercom | Conversation volume, open count, response time → penalty + engagement bonus |
-| Azure Table Storage | Accounts, mappings, daily scores, users, Intercom snapshots |
+| Azure Table Storage | Accounts, mappings, daily scores, users, Intercom snapshots, sync status |
 
 ### Health Score
 
@@ -76,13 +77,14 @@ When licences are not set, score is normalised out of 40 (activity + features). 
 
 ### Azure Table Storage Schema
 
-Five tables:
+Six tables:
 
 - **`accounts`** — PartitionKey: `"accounts"`, RowKey: account ID. Synced nightly from SQL Server.
 - **`amplitudemapping`** — PartitionKey: `"mapping"`, RowKey: account ID. Auto-synced from SQL, manually correctable.
 - **`churnscores`** — PartitionKey: account ID, RowKey: `YYYY-MM-DD`. Includes Zendesk + Intercom penalty/bonus details.
 - **`users`** — PartitionKey: `"users"`, RowKey: email (lowercase). Three roles: admin/supervisor/csm.
 - **`intercomscores`** — PartitionKey: domain, RowKey: `YYYY-MM-DD`. Daily Intercom conversation snapshots (30d rolling window).
+- **`syncstatus`** — PartitionKey: `"sync"`, RowKey: `"status"`. Single row tracking current sync state (running/completed/failed).
 
 ## Deployments
 
@@ -99,7 +101,7 @@ Five tables:
 cd backend
 npm run build        # tsc → dist/
 npm start            # func start (local dev)
-npm test             # jest (169 tests across 11 suites)
+npm test             # jest (178 tests across 13 suites)
 
 # Frontend
 cd frontend

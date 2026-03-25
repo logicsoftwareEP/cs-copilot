@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cd backend
 npm run build        # tsc -> dist/
 npm start            # func start
-npm test             # jest (112 tests, 9 suites)
+npm test             # jest (178 tests, 13 suites)
 
 # Frontend
 cd frontend
@@ -30,7 +30,7 @@ Entry point `src/index.ts` imports all function modules as side effects.
 **Functions** (`src/functions/`):
 - `AccountsApi.ts` - `GET /api/accounts` (list, CSM-filtered), `GET /api/accounts/{id}` (detail), `PATCH /api/accounts/{id}` (admin/supervisor: update ARR/licences). Auth required on all.
 - `MappingApi.ts` - `GET /api/mapping`, `POST /api/mapping`, `DELETE /api/mapping/{id}`. Admin/supervisor only.
-- `SyncTrigger.ts` - `POST /api/sync` - admin only. Calls `runSync()` directly.
+- `SyncTrigger.ts` - `POST /api/sync` (admin only, returns 202, fire-and-forget), `GET /api/sync` (sync status). Uses `SyncStatusStore` to track running/completed/failed state.
 - `SyncRunner.ts` - Timer trigger (2 AM UTC daily) + `runSync()` export. Orchestrates: SQL Server → accounts table, Amplitude → health scores, Zendesk → penalties.
 - `UsersApi.ts` - `GET /api/me` (current user), `GET /api/users`, `POST /api/users`, `DELETE /api/users?email=...`. Admin only (except `/api/me`).
 
@@ -42,7 +42,7 @@ Entry point `src/index.ts` imports all function modules as side effects.
 **Clients** (`src/clients/`):
 - `sqlClient.ts` - SQL Server: fetches accounts from `[analytics].[ClientsOverview]` view, extracts aliases and licences. Connection pooling + retry for transient errors.
 - `hubspotClient.ts` - **DISABLED**: HubSpot CRM API. Retained for rollback via `DATA_SOURCE=hubspot`.
-- `amplitudeClient.ts` - Amplitude Segmentation API: MAU trend, feature breadth (12 categories). Uses `gp:alias` user property with case-sensitive `is` filter.
+- `amplitudeClient.ts` - Amplitude Segmentation API: MAU trend, feature breadth (12 categories). Uses `gp:alias` user property with case-sensitive `is` filter. All requests go through `amplitudeFetch()` — concurrency limiter (max 4) + exponential backoff retry on 429. Feature queries skipped for accounts with no active users. Date windows pinned to UTC midnight for deterministic results.
 - `zendeskClient.ts` - Fetches ALL open/pending tickets in bulk (2-3 API calls), aggregates by requester email domain. No per-domain search.
 - `intercomClient.ts` - Intercom Conversations API: bulk-fetch conversations (incremental + open snapshot), aggregate by contact email domain. Bearer token auth.
 
@@ -52,6 +52,7 @@ Entry point `src/index.ts` imports all function modules as side effects.
 - `scoreStore.ts` - `ScoreStore` for `churnscores` table. `partitionKey = accountId`, `rowKey = YYYY-MM-DD`.
 - `userStore.ts` - `UserStore` for `users` table. `partitionKey = 'users'`, `rowKey = email (lowercase)`.
 - `intercomStore.ts` - `IntercomStore` for `intercomscores` table. `partitionKey = domain`, `rowKey = YYYY-MM-DD`. Daily snapshots aggregated for 30d scoring.
+- `syncStatusStore.ts` - `SyncStatusStore` for `syncstatus` table. Single row tracking sync state (running/completed/failed) for UI polling.
 - `healthScoreService.ts` - Pure scoring: licence utilisation (0–60) + activity trend (0–25) + feature adoption (0–15) + Intercom bonus (0–10) − Zendesk/Intercom penalty (0 to -20).
 
 **Patterns to follow:**
@@ -93,12 +94,13 @@ VITE_SKIP_AUTH=true
 
 ## Data Model
 
-Five Azure Table Storage tables:
+Six Azure Table Storage tables:
 - **`accounts`** - Account data synced nightly from SQL Server
 - **`amplitudemapping`** - Account ID → Amplitude alias (auto-synced from SQL, manually correctable)
 - **`churnscores`** - Daily health scores per account (includes Intercom penalty/bonus/details)
 - **`users`** - Email → displayName + role (admin/supervisor/csm)
 - **`intercomscores`** - Daily Intercom conversation snapshots per domain (30d rolling window)
+- **`syncstatus`** - Single row tracking sync state (running/completed/failed) for UI polling
 
 `Account` → joined with latest `ChurnScore` + `AmplitudeMapping` → returned as `AccountSummary`.
 
@@ -123,6 +125,8 @@ SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only cr
 **Account filters MUST go inside the event object**, not as a top-level `filters` query param. Amplitude silently ignores top-level filters and returns global totals across all accounts. This bug has occurred 3 times.
 
 **Amplitude `is` filter is case-sensitive.** SQL view aliases may have different casing than Amplitude's `gp:alias` values. 32 aliases were manually corrected — stored in the `amplitudemapping` table. The nightly sync preserves these corrections (only creates mappings for accounts without existing ones).
+
+**Amplitude rate limiting.** The Segmentation API has strict rate limits (~360 req/hour). All calls go through `amplitudeFetch()` which limits concurrency to 4 and retries 429s with exponential backoff (5s, 10s, 20s, 40s). Two optimizations reduce call volume: (1) feature breadth queries are skipped when MAU is 0 or null, (2) accounts with valid non-zero scores for today are skipped on re-sync. Do NOT add parallel Amplitude calls without going through the rate limiter.
 
 ## Testing Notes
 

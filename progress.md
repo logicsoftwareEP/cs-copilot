@@ -1,6 +1,6 @@
 # CS Copilot - Progress
 
-## Status: Live — Intercom integration + reweighted scoring (2026-03-21)
+## Status: Live — Amplitude rate limiting fix + async sync (2026-03-22)
 
 **Spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 **Plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
@@ -9,7 +9,7 @@
 
 ## What's Left
 
-1. Set `INTERCOM_ACCESS_TOKEN` in Azure Functions app configuration to enable Intercom scoring
+1. ~~Set `INTERCOM_ACCESS_TOKEN` in Azure Functions app configuration~~ — **DONE** (2026-03-22)
 2. Add remaining CSM users via `/admin` page
 3. See `TODOS.md` for deferred items
 
@@ -39,12 +39,42 @@
 
 ---
 
-## Validation Snapshot (2026-03-21)
+## Validation Snapshot (2026-03-22)
 
 - Backend TypeScript build: **clean**
-- Backend tests: **169/169 passing** across 11 suites
+- Backend tests: **178/178 passing** across 13 suites
 - Frontend TypeScript + Vite build: **clean**
 - Backend + frontend deployed to Azure
+
+### 2026-03-22 — Amplitude rate limiting fix + async sync with status polling
+
+**Root cause: Amplitude 429 rate limiting.**
+The sync was making ~2700 API calls per run (195 accounts × 14 calls each), far exceeding Amplitude's Segmentation API rate limit. This caused:
+- "Inconsistent scores" — some accounts got data before rate limiting kicked in, others got 429 and scored 0
+- "All scores 0" — when rate limit was fully exhausted, every account got 429
+
+**Amplitude rate limit fix:**
+- `amplitudeFetch()` wrapper: concurrency limiter (max 4 concurrent, Amplitude allows 5) + exponential backoff retry on 429 (5s, 10s, 20s, 40s, up to 4 retries)
+- All Amplitude API calls serialized within each account (was 14 parallel → sequential through queue)
+- **Skip feature queries for inactive accounts** — if MAU is 0 or null, skip all 12 feature event queries (saves ~80% of API calls for inactive accounts)
+- **Skip re-scoring on re-sync** — accounts with valid non-zero scores for today are not re-queried (prevents wasting rate limit on manual re-sync)
+
+**Amplitude date fix:**
+- `daysAgo()` pinned to UTC midnight — all syncs on the same UTC calendar day produce identical Amplitude query windows
+- `toAmplitudeDate()` switched from local time to UTC components
+- 4 new tests for date utilities
+
+**Async sync with status polling:**
+- `POST /api/sync` now returns `202 Accepted` immediately (fire-and-forget)
+- New `syncstatus` table tracks sync state (`running`/`completed`/`failed`)
+- New `GET /api/sync` endpoint returns current sync status
+- `SyncStatusStore` service: `setRunning()`, `setCompleted()`, `setFailed(error)`, `getStatus()`
+- Frontend polls `GET /api/sync` every 5s while syncing, auto-refreshes accounts on completion
+- Sync button stays disabled during entire sync, stale-status-aware (ignores completed from previous sync)
+- On-mount status check: if page loads while sync is running, button automatically shows "Syncing..." and polls
+- 5 new tests for SyncStatusStore
+
+**Intercom token:** `INTERCOM_ACCESS_TOKEN` set in Azure Functions app configuration.
 
 ### 2026-03-21 — Intercom integration + scoring reweight
 
