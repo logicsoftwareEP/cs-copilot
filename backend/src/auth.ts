@@ -19,12 +19,13 @@ export class AuthError extends Error {
 }
 
 export async function authenticateRequest(req: HttpRequest): Promise<User> {
-  // Local dev bypass
-  if (process.env.SKIP_AUTH) {
-    return { email: 'dev@local', displayName: 'Dev User', role: 'admin', createdAt: '', updatedAt: '' };
+  // Local dev bypass — disabled when WEBSITE_SITE_NAME is set (Azure production)
+  if (process.env.SKIP_AUTH && !process.env.WEBSITE_SITE_NAME) {
+    const devEmail = req.headers.get('x-user-email')?.toLowerCase() || 'dev@local';
+    return { email: devEmail, displayName: 'Dev User', role: 'admin', createdAt: '', updatedAt: '' };
   }
 
-  // Try SWA client principal header first (if backend is linked to SWA)
+  // SWA client principal header (only trusted auth source in production)
   let email: string | undefined;
   const principalHeader = req.headers.get('x-ms-client-principal');
   if (principalHeader) {
@@ -35,12 +36,7 @@ export async function authenticateRequest(req: HttpRequest): Promise<User> {
           || c.typ === 'preferred_username'
       );
       email = emailClaim?.val?.toLowerCase();
-    } catch { /* fall through to X-User-Email */ }
-  }
-
-  // Fall back to X-User-Email header (sent by frontend behind SWA auth + function key)
-  if (!email) {
-    email = req.headers.get('x-user-email')?.toLowerCase();
+    } catch { /* invalid principal header */ }
   }
 
   if (!email) {
