@@ -1,75 +1,74 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { runSync } from './SyncRunner';
-import { authenticateRequest, requireRole, AuthError } from '../auth';
 import { getConfig } from '../config';
 import { SyncStatusStore } from '../services/syncStatusStore';
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-User-Email',
-};
+import { User } from '../types';
+import { withAuth, corsHeaders } from '../middleware';
 
 async function triggerSync(
   req: HttpRequest,
-  context: InvocationContext
+  context: InvocationContext,
+  user: User,
 ): Promise<HttpResponseInit> {
-  if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
+  const headers = corsHeaders();
+
+  // GET /api/sync — return current sync status
+  if (req.method === 'GET') {
+    const config = getConfig();
+    const statusStore = new SyncStatusStore(config.storageConnectionString);
+    const status = await statusStore.getStatus();
+    return {
+      status: 200,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(status),
+    };
+  }
+
+  // POST /api/sync — admin only
+  if (user.role !== 'admin') {
+    return { status: 403, headers, body: 'Requires role: admin' };
+  }
 
   const config = getConfig();
   const statusStore = new SyncStatusStore(config.storageConnectionString);
 
-  // GET /api/sync — return current sync status
-  if (req.method === 'GET') {
-    try {
-      await authenticateRequest(req);
-      const status = await statusStore.getStatus();
+  await statusStore.ensureTable();
+
+  // Concurrency guard: check if a sync is already running
+  const currentStatus = await statusStore.getStatus();
+  if (currentStatus.status === 'running' && currentStatus.startedAt) {
+    const startedAt = new Date(currentStatus.startedAt).getTime();
+    const fifteenMinAgo = Date.now() - 15 * 60 * 1000;
+    if (startedAt > fifteenMinAgo) {
       return {
-        status: 200,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-        body: JSON.stringify(status),
+        status: 429,
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Sync already in progress', startedAt: currentStatus.startedAt }),
       };
-    } catch (err: any) {
-      if (err instanceof AuthError) return { status: err.status, headers: CORS_HEADERS, body: err.message };
-      return { status: 500, headers: CORS_HEADERS, body: `Status check failed: ${err.message}` };
     }
+    // Stale sync (>15 min) — allow override
   }
 
-  // POST /api/sync — trigger sync
-  try {
-    const user = await authenticateRequest(req);
-    requireRole(user, 'admin');
+  await statusStore.setRunning();
 
-    await statusStore.ensureTable();
-    await statusStore.setRunning();
+  // Fire-and-forget: return 202 immediately, run sync in background.
+  runSync(context)
+    .then(() => statusStore.setCompleted())
+    .catch(async (err) => {
+      context.error('Background sync failed:', err);
+      await statusStore.setFailed(err?.message ?? String(err));
+    });
 
-    // Fire-and-forget: return 202 immediately, run sync in background.
-    runSync(context)
-      .then(() => statusStore.setCompleted())
-      .catch(async (err) => {
-        context.error('Background sync failed:', err);
-        await statusStore.setFailed(err?.message ?? String(err));
-      });
-
-    return {
-      status: 202,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'accepted' }),
-    };
-  } catch (err: any) {
-    if (err instanceof AuthError) return { status: err.status, headers: CORS_HEADERS, body: err.message };
-    context.error('Sync failed:', err);
-    return {
-      status: 500,
-      headers: CORS_HEADERS,
-      body: `Sync failed: ${err.message}`,
-    };
-  }
+  return {
+    status: 202,
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'accepted' }),
+  };
 }
 
 app.http('TriggerSync', {
   methods: ['GET', 'POST', 'OPTIONS'],
-  authLevel: 'function',
+  authLevel: 'anonymous',
   route: 'sync',
-  handler: triggerSync,
+  handler: withAuth(triggerSync),
 });

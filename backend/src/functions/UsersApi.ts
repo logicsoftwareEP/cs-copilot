@@ -2,39 +2,26 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/fu
 import { z } from 'zod';
 import { getConfig } from '../config';
 import { UserStore } from '../services/userStore';
-import { authenticateRequest, requireRole, AuthError } from '../auth';
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-User-Email',
-};
+import { User } from '../types';
+import { withAuth, corsHeaders } from '../middleware';
 
 function makeStore() {
   const config = getConfig();
   return new UserStore(config.storageConnectionString, config.tableUsers);
 }
 
-function errorResponse(err: unknown): HttpResponseInit {
-  if (err instanceof AuthError) {
-    return { status: err.status, headers: { ...CORS_HEADERS, 'Content-Type': 'text/plain' }, body: err.message };
-  }
-  return { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'text/plain' }, body: 'Internal error' };
-}
-
-// GET /api/me — returns current user's info or error
-async function getMe(req: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
-  try {
-    const user = await authenticateRequest(req);
-    return {
-      status: 200,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email, displayName: user.displayName, role: user.role }),
-    };
-  } catch (err) {
-    return errorResponse(err);
-  }
+// GET /api/me — returns current user's info
+async function getMe(
+  req: HttpRequest,
+  context: InvocationContext,
+  user: User,
+): Promise<HttpResponseInit> {
+  const headers = corsHeaders();
+  return {
+    status: 200,
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: user.email, displayName: user.displayName, role: user.role }),
+  };
 }
 
 const UpsertUserSchema = z.object({
@@ -44,79 +31,76 @@ const UpsertUserSchema = z.object({
 });
 
 // GET /api/users, POST /api/users, DELETE /api/users?email=...
-async function usersHandler(req: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
-  try {
-    const user = await authenticateRequest(req);
-    requireRole(user, 'admin');
+async function usersHandler(
+  req: HttpRequest,
+  context: InvocationContext,
+  user: User,
+): Promise<HttpResponseInit> {
+  const headers = corsHeaders();
+  const store = makeStore();
+  await store.ensureTable();
 
-    const store = makeStore();
-    await store.ensureTable();
+  if (req.method === 'GET') {
+    const users = await store.listUsers();
+    return {
+      status: 200,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(users),
+    };
+  }
 
-    if (req.method === 'GET') {
-      const users = await store.listUsers();
-      return {
-        status: 200,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-        body: JSON.stringify(users),
-      };
+  if (req.method === 'POST') {
+    let body: unknown;
+    try { body = await req.json(); } catch {
+      return { status: 400, headers, body: 'Invalid JSON body.' };
+    }
+    const parsed = UpsertUserSchema.safeParse(body);
+    if (!parsed.success) {
+      return { status: 400, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ errors: parsed.error.issues }) };
     }
 
-    if (req.method === 'POST') {
-      let body: unknown;
-      try { body = await req.json(); } catch {
-        return { status: 400, headers: CORS_HEADERS, body: 'Invalid JSON body.' };
-      }
-      const parsed = UpsertUserSchema.safeParse(body);
-      if (!parsed.success) {
-        return { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }, body: JSON.stringify({ errors: parsed.error.issues }) };
-      }
-
-      // Guard: cannot demote the last admin
-      if (parsed.data.role !== 'admin') {
-        const allUsers = await store.listUsers();
-        const admins = allUsers.filter(u => u.role === 'admin');
-        const isTargetCurrentlyAdmin = admins.some(a => a.email === parsed.data.email.toLowerCase());
-        if (isTargetCurrentlyAdmin && admins.length <= 1) {
-          return { status: 400, headers: CORS_HEADERS, body: 'Cannot demote the last admin.' };
-        }
-      }
-
-      await store.upsertUser(parsed.data.email, parsed.data.displayName, parsed.data.role);
-      return { status: 200, headers: CORS_HEADERS };
-    }
-
-    if (req.method === 'DELETE') {
-      const email = req.query.get('email');
-      if (!email) return { status: 400, headers: CORS_HEADERS, body: 'Missing email query parameter.' };
-
-      // Guard: cannot delete the last admin
+    // Guard: cannot demote the last admin
+    if (parsed.data.role !== 'admin') {
       const allUsers = await store.listUsers();
       const admins = allUsers.filter(u => u.role === 'admin');
-      if (admins.length <= 1 && admins.some(a => a.email === email.toLowerCase())) {
-        return { status: 400, headers: CORS_HEADERS, body: 'Cannot delete the last admin.' };
+      const isTargetCurrentlyAdmin = admins.some(a => a.email === parsed.data.email.toLowerCase());
+      if (isTargetCurrentlyAdmin && admins.length <= 1) {
+        return { status: 400, headers, body: 'Cannot demote the last admin.' };
       }
-
-      await store.deleteUser(email);
-      return { status: 204, headers: CORS_HEADERS };
     }
 
-    return { status: 405, headers: CORS_HEADERS, body: 'Method not allowed' };
-  } catch (err) {
-    return errorResponse(err);
+    await store.upsertUser(parsed.data.email, parsed.data.displayName, parsed.data.role);
+    return { status: 200, headers };
   }
+
+  if (req.method === 'DELETE') {
+    const email = req.query.get('email');
+    if (!email) return { status: 400, headers, body: 'Missing email query parameter.' };
+
+    // Guard: cannot delete the last admin
+    const allUsers = await store.listUsers();
+    const admins = allUsers.filter(u => u.role === 'admin');
+    if (admins.length <= 1 && admins.some(a => a.email === email.toLowerCase())) {
+      return { status: 400, headers, body: 'Cannot delete the last admin.' };
+    }
+
+    await store.deleteUser(email);
+    return { status: 204, headers };
+  }
+
+  return { status: 405, headers, body: 'Method not allowed' };
 }
 
 app.http('GetMe', {
   methods: ['GET', 'OPTIONS'],
-  authLevel: 'function',
+  authLevel: 'anonymous',
   route: 'me',
-  handler: getMe,
+  handler: withAuth(getMe),
 });
 
 app.http('UsersCollection', {
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  authLevel: 'function',
+  authLevel: 'anonymous',
   route: 'users',
-  handler: usersHandler,
+  handler: withAuth(usersHandler, 'admin'),
 });

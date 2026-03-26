@@ -3,18 +3,12 @@ import { getConfig } from '../config';
 import { AccountStore } from '../services/accountStore';
 import { ScoreStore } from '../services/scoreStore';
 import { MappingStore } from '../services/mappingStore';
-import { AccountSummary } from '../types';
-import { authenticateRequest, requireRole, AuthError } from '../auth';
+import { AccountSummary, User } from '../types';
 import { fetchSignals, validateAlias, AmplitudeSignals } from '../clients/amplitudeClient';
 import { fetchAllZendeskTickets } from '../clients/zendeskClient';
 import { computeScore, applyAllPenalties, computeZendeskPenalty, computeIntercomPenalty, computeIntercomBonus } from '../services/healthScoreService';
 import { IntercomStore, IntercomAggregated } from '../services/intercomStore';
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-User-Email',
-};
+import { withAuth, corsHeaders } from '../middleware';
 
 function makeStores() {
   const config = getConfig();
@@ -31,84 +25,75 @@ function todayISO(): string {
 
 async function listAccounts(
   req: HttpRequest,
-  context: InvocationContext
+  context: InvocationContext,
+  user: User,
 ): Promise<HttpResponseInit> {
-  if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
+  const headers = corsHeaders();
+  const { accounts, scores, mappings } = makeStores();
+  await Promise.all([accounts.ensureTable(), scores.ensureTable(), mappings.ensureTable()]);
 
-  try {
-    const user = await authenticateRequest(req);
+  const [allAccounts, todayScores, allMappings] = await Promise.all([
+    accounts.listAccounts(),
+    scores.getAllScoresForDate(todayISO()),
+    mappings.listMappings(),
+  ]);
 
-    const { accounts, scores, mappings } = makeStores();
-    await Promise.all([accounts.ensureTable(), scores.ensureTable(), mappings.ensureTable()]);
+  const mappingLookup = new Map(allMappings.map(m => [m.accountId, m.amplitudeAlias]));
 
-    const [allAccounts, todayScores, allMappings] = await Promise.all([
-      accounts.listAccounts(),
-      scores.getAllScoresForDate(todayISO()),
-      mappings.listMappings(),
-    ]);
+  const missingIds = allAccounts
+    .filter(a => !todayScores.has(a.accountId))
+    .map(a => a.accountId);
 
-    const mappingLookup = new Map(allMappings.map(m => [m.accountId, m.amplitudeAlias]));
+  const fallbackScores = new Map(
+    await Promise.all(
+      missingIds.map(async id => {
+        const s = await scores.getLatestScoreForAccount(id);
+        return [id, s] as const;
+      })
+    )
+  );
 
-    const missingIds = allAccounts
-      .filter(a => !todayScores.has(a.accountId))
-      .map(a => a.accountId);
-
-    const fallbackScores = new Map(
-      await Promise.all(
-        missingIds.map(async id => {
-          const s = await scores.getLatestScoreForAccount(id);
-          return [id, s] as const;
-        })
-      )
-    );
-
-    let summary: AccountSummary[] = allAccounts.map(account => {
-      const scoreRow = todayScores.get(account.accountId) ?? fallbackScores.get(account.accountId) ?? null;
-      return {
-        ...account,
-        score: scoreRow?.score ?? null,
-        tier: scoreRow?.tier ?? null,
-        scoreDelta: scoreRow?.scoreDelta ?? null,
-        amplitudeAlias: mappingLookup.get(account.accountId) ?? null,
-        aliasStatus: scoreRow?.aliasStatus ?? null,
-        hidden: account.hidden,
-      };
-    });
-
-    // CSM filtering: only show accounts owned by this CSM (matched by email)
-    if (user.role === 'csm') {
-      const email = user.email.toLowerCase();
-      summary = summary.filter(a =>
-        (a.csmEmail ?? '').toLowerCase() === email && !a.hidden
-      );
-    }
-
+  let summary: AccountSummary[] = allAccounts.map(account => {
+    const scoreRow = todayScores.get(account.accountId) ?? fallbackScores.get(account.accountId) ?? null;
     return {
-      status: 200,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      body: JSON.stringify(summary),
+      ...account,
+      score: scoreRow?.score ?? null,
+      tier: scoreRow?.tier ?? null,
+      scoreDelta: scoreRow?.scoreDelta ?? null,
+      amplitudeAlias: mappingLookup.get(account.accountId) ?? null,
+      aliasStatus: scoreRow?.aliasStatus ?? null,
+      hidden: account.hidden,
     };
-  } catch (err: any) {
-    if (err instanceof AuthError) return { status: err.status, headers: CORS_HEADERS, body: err.message };
-    context.error('listAccounts failed:', err);
-    return { status: 500, headers: CORS_HEADERS, body: `Internal error: ${err.message}` };
+  });
+
+  // CSM filtering: only show accounts owned by this CSM (matched by email)
+  if (user.role === 'csm') {
+    const email = user.email.toLowerCase();
+    summary = summary.filter(a =>
+      (a.csmEmail ?? '').toLowerCase() === email && !a.hidden
+    );
   }
+
+  return {
+    status: 200,
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(summary),
+  };
 }
 
 async function getAccount(
   req: HttpRequest,
-  context: InvocationContext
+  context: InvocationContext,
+  user: User,
 ): Promise<HttpResponseInit> {
-  if (req.method === 'OPTIONS') return { status: 204, headers: CORS_HEADERS };
-
+  const headers = corsHeaders();
   const accountId = req.params.id;
-
-  try {
-    const user = await authenticateRequest(req);
 
     // ── PATCH: update licence count and/or ARR ────────────────────────────────
     if (req.method === 'PATCH') {
-      requireRole(user, 'admin', 'supervisor');
+      if (user.role !== 'admin' && user.role !== 'supervisor') {
+        return { status: 403, headers, body: 'Requires role: admin or supervisor' };
+      }
 
       const body = await req.json() as { licenses?: number | null; arr?: number; hidden?: boolean };
       const { accounts } = makeStores();
@@ -117,7 +102,7 @@ async function getAccount(
       if (body.licenses !== undefined) {
         const licenses = body.licenses;
         if (licenses !== null && (typeof licenses !== 'number' || licenses < 0)) {
-          return { status: 400, headers: CORS_HEADERS, body: 'licenses must be a non-negative number or null.' };
+          return { status: 400, headers: headers, body: 'licenses must be a non-negative number or null.' };
         }
         await accounts.updateLicenses(accountId, licenses);
       }
@@ -131,17 +116,19 @@ async function getAccount(
 
       if (body.hidden !== undefined) {
         if (typeof body.hidden !== 'boolean') {
-          return { status: 400, headers: CORS_HEADERS, body: 'hidden must be a boolean.' };
+          return { status: 400, headers: headers, body: 'hidden must be a boolean.' };
         }
         await accounts.updateHidden(accountId, body.hidden);
       }
 
-      return { status: 204, headers: CORS_HEADERS };
+      return { status: 204, headers: headers };
     }
 
     // ── POST: refresh score for a single account ──────────────────────────────
     if (req.method === 'POST') {
-      requireRole(user, 'admin', 'supervisor');
+      if (user.role !== 'admin' && user.role !== 'supervisor') {
+        return { status: 403, headers, body: 'Requires role: admin or supervisor' };
+      }
 
       const config = getConfig();
       const { accounts, scores, mappings } = makeStores();
@@ -153,12 +140,12 @@ async function getAccount(
       ]);
 
       if (!account) {
-        return { status: 404, headers: CORS_HEADERS, body: 'Account not found.' };
+        return { status: 404, headers: headers, body: 'Account not found.' };
       }
 
       const amplitudeAlias = mapping?.amplitudeAlias;
       if (!amplitudeAlias) {
-        return { status: 400, headers: CORS_HEADERS, body: 'No Amplitude alias set for this account.' };
+        return { status: 400, headers: headers, body: 'No Amplitude alias set for this account.' };
       }
 
       const todayISO = new Date().toISOString().slice(0, 10);
@@ -220,7 +207,7 @@ async function getAccount(
           });
           return {
             status: 200,
-            headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+            headers: { ...headers, 'Content-Type': 'application/json' },
             body: JSON.stringify({ score: null, tier: 'unmapped', aliasStatus: 'not-found' }),
           };
         }
@@ -273,7 +260,7 @@ async function getAccount(
 
       return {
         status: 200,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+        headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ score: adjusted.score, tier: adjusted.tier, aliasStatus: 'valid', scoreDelta }),
       };
     }
@@ -287,12 +274,12 @@ async function getAccount(
     ]);
 
     if (!account) {
-      return { status: 404, headers: CORS_HEADERS, body: 'Account not found.' };
+      return { status: 404, headers: headers, body: 'Account not found.' };
     }
 
     // CSM filtering: can only view own accounts (matched by email)
     if (user.role === 'csm' && (account.csmEmail ?? '').toLowerCase() !== user.email.toLowerCase()) {
-      return { status: 403, headers: CORS_HEADERS, body: 'Access denied.' };
+      return { status: 403, headers: headers, body: 'Access denied.' };
     }
 
     const [latestScore, history] = await Promise.all([
@@ -302,7 +289,7 @@ async function getAccount(
 
     return {
       status: 200,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...account,
         score: latestScore?.score ?? null,
@@ -328,24 +315,19 @@ async function getAccount(
         scoreHistory: history,
       }),
     };
-  } catch (err: any) {
-    if (err instanceof AuthError) return { status: err.status, headers: CORS_HEADERS, body: err.message };
-    context.error('getAccount failed:', err);
-    return { status: 500, headers: CORS_HEADERS, body: `Internal error: ${err.message}` };
-  }
 }
 
 app.http('ListAccounts', {
   methods: ['GET', 'OPTIONS'],
-  authLevel: 'function',
+  authLevel: 'anonymous',
   route: 'accounts',
-  handler: listAccounts,
+  handler: withAuth(listAccounts),
 });
 
 // Single handler for GET + PATCH + POST on accounts/{id}
 app.http('GetAccount', {
   methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-  authLevel: 'function',
+  authLevel: 'anonymous',
   route: 'accounts/{id}',
-  handler: getAccount,
+  handler: withAuth(getAccount),
 });
