@@ -9,25 +9,28 @@ import { Spinner } from '../components/Spinner';
 import { SortIcon } from '../components/SortIcon';
 import { DetailPanel } from '../components/DetailPanel';
 
+function SortTH({ col, sortCol, sortDir, onSort, children, className = '' }: {
+  col: SortCol; sortCol: SortCol; sortDir: 'asc' | 'desc'; onSort: (col: SortCol) => void;
+  children: React.ReactNode; className?: string;
+}) {
+  const active = sortCol === col;
+  return (
+    <th
+      className={`px-4 py-3 cursor-pointer select-none whitespace-nowrap text-left ${className}`}
+      onClick={() => onSort(col)}
+    >
+      <span className={`inline-flex items-center text-[14px] font-semibold uppercase tracking-[0.08em] transition-colors ${
+        active ? 'text-obs-accent' : 'text-obs-ghost hover:text-obs-dim'
+      }`}>
+        {children}
+        <SortIcon active={active} dir={sortDir} />
+      </span>
+    </th>
+  );
+}
+
 export default function Portfolio() {
   const d = usePortfolioData();
-
-  function SortTH({ col, children, className = '' }: { col: SortCol; children: React.ReactNode; className?: string }) {
-    const active = d.sortCol === col;
-    return (
-      <th
-        className={`px-4 py-3 cursor-pointer select-none whitespace-nowrap text-left ${className}`}
-        onClick={() => d.handleSortClick(col)}
-      >
-        <span className={`inline-flex items-center text-[14px] font-semibold uppercase tracking-[0.08em] transition-colors ${
-          active ? 'text-obs-accent' : 'text-obs-ghost hover:text-obs-dim'
-        }`}>
-          {children}
-          <SortIcon active={active} dir={d.sortDir} />
-        </span>
-      </th>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-obs-base">
@@ -311,14 +314,14 @@ export default function Portfolio() {
                   <thead>
                     <tr className="bg-obs-card/50 border-b border-obs-edge">
                       {d.canManage && <th className="px-2 py-3 w-8" />}
-                      <SortTH col="accountName">Account</SortTH>
-                      <SortTH col="csmName">Owner</SortTH>
-                      <SortTH col="tier">Health</SortTH>
-                      <SortTH col="score">Score</SortTH>
-                      <SortTH col="amplitudeAlias">Alias</SortTH>
-                      <SortTH col="licenses">Licences</SortTH>
-                      <SortTH col="arr">ARR</SortTH>
-                      <SortTH col="renewalDate">Renewal</SortTH>
+                      <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="accountName">Account</SortTH>
+                      <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="csmName">Owner</SortTH>
+                      <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="tier">Health</SortTH>
+                      <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="score">Score</SortTH>
+                      <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="amplitudeAlias">Alias</SortTH>
+                      <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="licenses">Licences</SortTH>
+                      <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="arr">ARR</SortTH>
+                      <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="renewalDate">Renewal</SortTH>
                     </tr>
                   </thead>
                   <tbody>

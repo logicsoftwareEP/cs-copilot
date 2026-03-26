@@ -85,7 +85,7 @@ export function intercomBonusInfo(details: IntercomDetails | null): { pts: strin
 
 // ─── Utility helpers ──────────────────────────────────────────────────────────
 
-export function formatArr(arr: number): string {
+export function formatArr(arr: number | null | undefined): string {
   if (arr == null || arr === 0) return '—';
   if (arr >= 1000) return `$${(arr / 1000).toFixed(arr >= 10000 ? 0 : 1)}k`;
   return `$${arr.toFixed(0)}`;
