@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User } from '../types';
-import { getMe, setAuthEmail } from '../services/api';
+import { getMe } from '../services/api';
 
 interface AuthState {
   user: User | null;
@@ -40,12 +40,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Set email for all subsequent API calls
-      setAuthEmail(email);
-
       // Check app-level authorization
       try {
-        const user = await getMe(email);
+        const user = await getMe();
         setState({ user, loading: false, error: null });
       } catch (err: any) {
         if (err.message?.includes('auth:401')) {
