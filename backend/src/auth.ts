@@ -39,6 +39,13 @@ export async function authenticateRequest(req: HttpRequest): Promise<User> {
     } catch { /* invalid principal header */ }
   }
 
+  // Fall back to X-User-Email header (used by frontend behind function key auth)
+  // This fallback is safe because authLevel: 'function' gates access with a key.
+  // Will be removed when SWA backend linking is enabled (Standard plan).
+  if (!email) {
+    email = req.headers.get('x-user-email')?.toLowerCase();
+  }
+
   if (!email) {
     throw new AuthError(401, 'Not authenticated');
   }

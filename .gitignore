@@ -5,3 +5,6 @@ dist/
 local.settings.json
 .superpowers/
 frontend/.env.production
+.worktrees/
+.superflow-state.json
+CLAUDE.local.md

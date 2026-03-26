@@ -93,14 +93,14 @@ async function usersHandler(
 
 app.http('GetMe', {
   methods: ['GET', 'OPTIONS'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'me',
   handler: withAuth(getMe),
 });
 
 app.http('UsersCollection', {
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'users',
   handler: withAuth(usersHandler, 'admin'),
 });

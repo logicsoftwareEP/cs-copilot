@@ -68,7 +68,7 @@ async function triggerSync(
 
 app.http('TriggerSync', {
   methods: ['GET', 'POST', 'OPTIONS'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'sync',
   handler: withAuth(triggerSync),
 });

@@ -63,7 +63,7 @@ Entry point `src/index.ts` imports all function modules as side effects.
 - New functions must be added to `src/index.ts` as an import side effect.
 - Account writes come from `SyncRunner.runSync()` (timer or on-demand via `POST /api/sync`).
 
-### Frontend (`frontend/`) - React 18, Vite, TypeScript, Tailwind CSS, react-router-dom v6
+### Frontend (`frontend/`) - React 18, Vite, TypeScript, Tailwind CSS, react-router-dom v7
 
 SPA with client-side routing and Azure SWA Entra ID authentication:
 - `/` - `Portfolio.tsx` - Account table with health scores, role-aware UI
@@ -137,5 +137,7 @@ SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only cr
 
 Full spec: `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 Auth spec: `docs/superpowers/specs/2026-03-17-auth-and-user-management-design.md`
-ClientId migration spec: `docs/superpowers/specs/2026-03-24-clientid-migration-design.md`
+ClientId migration spec: (removed — file does not exist)
 Progress: `progress.md`
+
+<!-- updated-by-superflow:2026-03-26 -->

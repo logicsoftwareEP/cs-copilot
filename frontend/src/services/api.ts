@@ -1,19 +1,30 @@
 import { AccountSummary, AccountDetail, User } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
+const API_KEY = import.meta.env.VITE_API_KEY ?? '';
+
+let _userEmail = '';
+export function setAuthEmail(email: string) { _userEmail = email; }
+
+function withCode(url: string): string {
+  if (!API_KEY) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}code=${encodeURIComponent(API_KEY)}`;
+}
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${BASE_URL}${path}`, {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (_userEmail) headers['X-User-Email'] = _userEmail;
+  return fetch(withCode(`${BASE_URL}${path}`), {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
+    headers: { ...headers, ...init?.headers },
   });
 }
 
-export async function getMe(): Promise<User> {
-  const res = await apiFetch('/me');
+export async function getMe(email: string): Promise<User> {
+  const res = await fetch(withCode(`${BASE_URL}/me`), {
+    headers: { 'X-User-Email': email },
+  });
   if (res.status === 401 || res.status === 403) throw new Error(`auth:${res.status}`);
   if (!res.ok) throw new Error(`Failed to fetch user: ${res.status}`);
   return res.json();

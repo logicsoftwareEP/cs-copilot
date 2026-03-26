@@ -281,7 +281,7 @@ async function getAccount(
 
 app.http('ListAccounts', {
   methods: ['GET', 'OPTIONS'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'accounts',
   handler: withAuth(listAccounts),
 });
@@ -289,7 +289,7 @@ app.http('ListAccounts', {
 // Single handler for GET + PATCH + POST on accounts/{id}
 app.http('GetAccount', {
   methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'accounts/{id}',
   handler: withAuth(getAccount),
 });

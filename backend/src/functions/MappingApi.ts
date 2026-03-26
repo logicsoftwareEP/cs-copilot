@@ -79,14 +79,14 @@ async function mappingItem(
 
 app.http('MappingCollection', {
   methods: ['GET', 'POST', 'OPTIONS'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'mapping',
   handler: withAuth(mappingCollection, 'admin', 'supervisor', 'csm'),
 });
 
 app.http('MappingItem', {
   methods: ['DELETE', 'OPTIONS'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'mapping/{id}',
   handler: withAuth(mappingItem, 'admin', 'supervisor', 'csm'),
 });

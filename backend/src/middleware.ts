@@ -9,14 +9,13 @@ type AuthenticatedHandler = (
 ) => Promise<HttpResponseInit>;
 
 export function corsHeaders(): Record<string, string> {
-  // In production (WEBSITE_SITE_NAME set by Azure), require SWA_ORIGIN.
-  // Fallback to '*' only in local dev.
-  const isProduction = !!process.env.WEBSITE_SITE_NAME;
-  const origin = process.env.SWA_ORIGIN || (isProduction ? '' : '*');
+  // SWA_ORIGIN locks CORS to the frontend domain in production.
+  // Falls back to '*' for local dev or when not configured.
+  const origin = process.env.SWA_ORIGIN || '*';
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, X-User-Email',
   };
 }
 
