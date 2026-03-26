@@ -259,7 +259,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         await scoreStore.upsertScore(buildScoreRow({
           accountId: company.accountId, date: todayISO,
           signals: null, licenses, featureEvents: config.amplitudeFeatureEvents,
-          zendeskData, intercomData: null, previousScore, aliasStatus: null,
+          zendeskData, intercomData, previousScore, aliasStatus: null,
         }));
         continue;
       }
@@ -286,7 +286,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
             await scoreStore.upsertScore(buildScoreRow({
               accountId: company.accountId, date: todayISO,
               signals: null, licenses, featureEvents: config.amplitudeFeatureEvents,
-              zendeskData, intercomData: null, previousScore, aliasStatus: 'not-found',
+              zendeskData, intercomData, previousScore, aliasStatus: 'not-found',
             }));
             log(`Alias not found in Amplitude: ${amplitudeAlias} (${company.accountName})`);
             continue;
@@ -310,7 +310,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         await scoreStore.upsertScore(buildScoreRow({
           accountId: company.accountId, date: todayISO,
           signals: null, licenses, featureEvents: config.amplitudeFeatureEvents,
-          zendeskData: null, intercomData: null, previousScore: null, aliasStatus: 'valid',
+          zendeskData, intercomData, previousScore: null, aliasStatus: 'valid',
         }));
       }
     }

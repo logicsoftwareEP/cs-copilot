@@ -327,13 +327,17 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
   // Patterns 1, 2, 4: no signals or unmapped
   if (!signals) {
     const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
+    const icPenalty = intercomData ? computeIntercomPenalty(intercomData) : null;
+    const icBonus = intercomData ? computeIntercomBonus(intercomData) : null;
     return {
       accountId, date, score: null, tier: 'unmapped',
       dauWauTrend: null, monthlyActiveUsers: null, licenseUtilization: null,
       featuresUsed: null, featureDetails: null, scoreDelta: null, computedAt,
       zendeskPenalty: penalty ? penalty.totalPenalty : null,
       zendeskDetails: penalty ? JSON.stringify(penalty) : null,
-      intercomPenalty: null, intercomBonus: null, intercomDetails: null,
+      intercomPenalty: icPenalty ? icPenalty.totalPenalty : null,
+      intercomBonus: icBonus ? icBonus.totalBonus : null,
+      intercomDetails: intercomData ? JSON.stringify({ ...icPenalty, ...icBonus, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
       aliasStatus,
     };
   }
