@@ -11,7 +11,7 @@ import { Account } from '../types';
 import { fetchAllZendeskTickets, ZendeskTicketData } from '../clients/zendeskClient';
 import { fetchIntercomConversations } from '../clients/intercomClient';
 import { IntercomStore, IntercomAggregated } from '../services/intercomStore';
-import { computeScore, applyAllPenalties, computeZendeskPenalty, computeIntercomPenalty, computeIntercomBonus } from '../services/healthScoreService';
+import { buildScoreRow } from '../services/healthScoreService';
 
 function isAllZeroSignals(signals: AmplitudeSignals): boolean {
   return (
@@ -249,26 +249,18 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         }
       }
 
+      const yesterdayScore = yesterdayScores.get(company.accountId);
+      const previousScore = yesterdayScore?.score ?? null;
+      const intercomData = accountDomain ? (intercomDomainMap.get(accountDomain) ?? null) : null;
+      const licenses = storedMap.get(company.accountId)?.licenses ?? null;
+
       if (!amplitudeAlias) {
         // No Amplitude mapping — upsert a placeholder score
-        const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
-        await scoreStore.upsertScore({
-          accountId: company.accountId,
-          date: todayISO,
-          score: null,
-          tier: 'unmapped',
-          dauWauTrend: null,
-          monthlyActiveUsers: null,
-          licenseUtilization: null,
-          featuresUsed: null,
-          featureDetails: null,
-          scoreDelta: null,
-          computedAt: new Date().toISOString(),
-          zendeskPenalty: penalty ? penalty.totalPenalty : null,
-          zendeskDetails: penalty ? JSON.stringify(penalty) : null,
-          intercomPenalty: null, intercomBonus: null, intercomDetails: null,
-          aliasStatus: null,
-        });
+        await scoreStore.upsertScore(buildScoreRow({
+          accountId: company.accountId, date: todayISO,
+          signals: null, licenses, featureEvents: config.amplitudeFeatureEvents,
+          zendeskData, intercomData: null, previousScore, aliasStatus: null,
+        }));
         continue;
       }
 
@@ -291,81 +283,21 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
           );
 
           if (!aliasExists) {
-            // Alias not found — treat as unmapped, not score=0
-            const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
-            await scoreStore.upsertScore({
-              accountId: company.accountId,
-              date: todayISO,
-              score: null,
-              tier: 'unmapped',
-              dauWauTrend: null,
-              monthlyActiveUsers: null,
-              licenseUtilization: null,
-              featuresUsed: null,
-              featureDetails: null,
-              scoreDelta: null,
-              computedAt: new Date().toISOString(),
-              zendeskPenalty: penalty ? penalty.totalPenalty : null,
-              zendeskDetails: penalty ? JSON.stringify(penalty) : null,
-              intercomPenalty: null, intercomBonus: null, intercomDetails: null,
-              aliasStatus: 'not-found',
-            });
+            await scoreStore.upsertScore(buildScoreRow({
+              accountId: company.accountId, date: todayISO,
+              signals: null, licenses, featureEvents: config.amplitudeFeatureEvents,
+              zendeskData, intercomData: null, previousScore, aliasStatus: 'not-found',
+            }));
             log(`Alias not found in Amplitude: ${amplitudeAlias} (${company.accountName})`);
             continue;
           }
         }
 
-        // Use stored licenses (manually entered) rather than HubSpot-synced data
-        const licenses = storedMap.get(company.accountId)?.licenses ?? null;
-        const baseResult = computeScore(signals, licenses);
-
-        // Apply Zendesk + Intercom penalties/bonuses
-        const intercomData = accountDomain ? (intercomDomainMap.get(accountDomain) ?? null) : null;
-        const adjusted = applyAllPenalties(baseResult, zendeskData, intercomData);
-        const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
-        const intercomPenaltyDetails = intercomData ? computeIntercomPenalty(intercomData) : null;
-        const intercomBonusDetails = intercomData ? computeIntercomBonus(intercomData) : null;
-
-        // Build feature details map
-        let featureDetailsJson: string | null = null;
-        if (signals.featureBreadth) {
-          const details: Record<string, boolean> = {};
-          for (const fe of config.amplitudeFeatureEvents) {
-            details[fe.category] = signals.featureBreadth.used.includes(fe.category);
-          }
-          featureDetailsJson = JSON.stringify(details);
-        }
-
-        // Calculate score delta vs yesterday
-        const yesterdayScore = yesterdayScores.get(company.accountId);
-        let scoreDelta: number | null = null;
-        if (
-          yesterdayScore !== undefined &&
-          yesterdayScore.score !== null &&
-          adjusted.score !== null
-        ) {
-          scoreDelta = adjusted.score - yesterdayScore.score;
-        }
-
-        await scoreStore.upsertScore({
-          accountId: company.accountId,
-          date: todayISO,
-          score: adjusted.score,
-          tier: adjusted.tier,
-          dauWauTrend: signals.dauWauTrend,
-          monthlyActiveUsers: adjusted.monthlyActiveUsers,
-          licenseUtilization: adjusted.licenseUtilization,
-          featuresUsed: signals.featureBreadth?.used.length ?? null,
-          featureDetails: featureDetailsJson,
-          scoreDelta,
-          computedAt: new Date().toISOString(),
-          zendeskPenalty: adjusted.zendeskPenalty,
-          zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
-          intercomPenalty: adjusted.intercomPenalty,
-          intercomBonus: adjusted.intercomBonus,
-          intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyDetails, ...intercomBonusDetails, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
-          aliasStatus: 'valid',
-        });
+        await scoreStore.upsertScore(buildScoreRow({
+          accountId: company.accountId, date: todayISO,
+          signals, licenses, featureEvents: config.amplitudeFeatureEvents,
+          zendeskData, intercomData, previousScore, aliasStatus: 'valid',
+        }));
 
         scored++;
       } catch (err: any) {
@@ -375,23 +307,11 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         failed++;
 
         // Still write a null score so the account is represented
-        await scoreStore.upsertScore({
-          accountId: company.accountId,
-          date: todayISO,
-          score: null,
-          tier: 'unmapped',
-          dauWauTrend: null,
-          monthlyActiveUsers: null,
-          licenseUtilization: null,
-          featuresUsed: null,
-          featureDetails: null,
-          scoreDelta: null,
-          computedAt: new Date().toISOString(),
-          zendeskPenalty: null,
-          zendeskDetails: null,
-          intercomPenalty: null, intercomBonus: null, intercomDetails: null,
-          aliasStatus: 'valid',
-        });
+        await scoreStore.upsertScore(buildScoreRow({
+          accountId: company.accountId, date: todayISO,
+          signals: null, licenses, featureEvents: config.amplitudeFeatureEvents,
+          zendeskData: null, intercomData: null, previousScore: null, aliasStatus: 'valid',
+        }));
       }
     }
 

@@ -4,9 +4,9 @@ import { AccountStore } from '../services/accountStore';
 import { ScoreStore } from '../services/scoreStore';
 import { MappingStore } from '../services/mappingStore';
 import { AccountSummary, User } from '../types';
-import { fetchSignals, validateAlias, AmplitudeSignals } from '../clients/amplitudeClient';
+import { fetchSignals, validateAlias } from '../clients/amplitudeClient';
 import { fetchAllZendeskTickets } from '../clients/zendeskClient';
-import { computeScore, applyAllPenalties, computeZendeskPenalty, computeIntercomPenalty, computeIntercomBonus } from '../services/healthScoreService';
+import { buildScoreRow } from '../services/healthScoreService';
 import { IntercomStore, IntercomAggregated } from '../services/intercomStore';
 import { withAuth, corsHeaders } from '../middleware';
 
@@ -190,21 +190,12 @@ async function getAccount(
           amplitudeAlias, config.amplitudeAccountProperty
         );
         if (!aliasExists) {
-          const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
-          const intercomPenaltyResult = intercomData ? computeIntercomPenalty(intercomData) : null;
-          const intercomBonusResult = intercomData ? computeIntercomBonus(intercomData) : null;
-          await scores.upsertScore({
-            accountId, date: todayISO, score: null, tier: 'unmapped',
-            dauWauTrend: null, monthlyActiveUsers: null, licenseUtilization: null,
-            featuresUsed: null, featureDetails: null, scoreDelta: null,
-            computedAt: new Date().toISOString(),
-            zendeskPenalty: penalty ? penalty.totalPenalty : null,
-            zendeskDetails: penalty ? JSON.stringify(penalty) : null,
-            intercomPenalty: intercomPenaltyResult ? intercomPenaltyResult.totalPenalty : null,
-            intercomBonus: intercomBonusResult ? intercomBonusResult.totalBonus : null,
-            intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyResult, ...intercomBonusResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
-            aliasStatus: 'not-found',
+          const row = buildScoreRow({
+            accountId, date: todayISO, signals: null, licenses: account.licenses,
+            featureEvents: config.amplitudeFeatureEvents,
+            zendeskData, intercomData, previousScore: null, aliasStatus: 'not-found',
           });
+          await scores.upsertScore(row);
           return {
             status: 200,
             headers: { ...headers, 'Content-Type': 'application/json' },
@@ -213,55 +204,26 @@ async function getAccount(
         }
       }
 
-      // Compute score
-      const baseResult = computeScore(signals, account.licenses);
-      const adjusted = applyAllPenalties(baseResult, zendeskData, intercomData);
-      const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
-      const intercomPenaltyResult = intercomData ? computeIntercomPenalty(intercomData) : null;
-      const intercomBonusResult = intercomData ? computeIntercomBonus(intercomData) : null;
-
-      let featureDetailsJson: string | null = null;
-      if (signals.featureBreadth) {
-        const details: Record<string, boolean> = {};
-        for (const fe of config.amplitudeFeatureEvents) {
-          details[fe.category] = signals.featureBreadth.used.includes(fe.category);
-        }
-        featureDetailsJson = JSON.stringify(details);
-      }
-
       // Get yesterday's score for delta
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayISO = yesterday.toISOString().slice(0, 10);
       const yesterdayScores = await scores.getAllScoresForDate(yesterdayISO);
       const prevScore = yesterdayScores.get(accountId);
-      let scoreDelta: number | null = null;
-      if (prevScore?.score !== null && prevScore?.score !== undefined && adjusted.score !== null) {
-        scoreDelta = adjusted.score - prevScore.score;
-      }
 
-      await scores.upsertScore({
-        accountId, date: todayISO,
-        score: adjusted.score, tier: adjusted.tier,
-        dauWauTrend: signals.dauWauTrend,
-        monthlyActiveUsers: adjusted.monthlyActiveUsers,
-        licenseUtilization: adjusted.licenseUtilization,
-        featuresUsed: signals.featureBreadth?.used.length ?? null,
-        featureDetails: featureDetailsJson,
-        scoreDelta,
-        computedAt: new Date().toISOString(),
-        zendeskPenalty: adjusted.zendeskPenalty,
-        zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
-        intercomPenalty: intercomPenaltyResult ? intercomPenaltyResult.totalPenalty : null,
-        intercomBonus: intercomBonusResult ? intercomBonusResult.totalBonus : null,
-        intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyResult, ...intercomBonusResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
+      const row = buildScoreRow({
+        accountId, date: todayISO, signals, licenses: account.licenses,
+        featureEvents: config.amplitudeFeatureEvents,
+        zendeskData, intercomData,
+        previousScore: prevScore?.score ?? null,
         aliasStatus: 'valid',
       });
+      await scores.upsertScore(row);
 
       return {
         status: 200,
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ score: adjusted.score, tier: adjusted.tier, aliasStatus: 'valid', scoreDelta }),
+        body: JSON.stringify({ score: row.score, tier: row.tier, aliasStatus: 'valid', scoreDelta: row.scoreDelta }),
       };
     }
 
