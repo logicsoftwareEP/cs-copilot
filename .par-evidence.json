@@ -1,10 +1,10 @@
 {
-  "sprint": 1,
+  "sprint": 2,
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "findings_fixed": ["CORS wildcard fallback in production", "withAuth auto-merge CORS headers", "SKIP_AUTH+WEBSITE_SITE_NAME test"],
-  "findings_deferred": ["Sync concurrency TOCTOU race (low frequency, admin-only)"],
-  "tests": "176 passed, 12 suites",
-  "ts": "2026-03-26T20:15:00Z"
+  "findings_fixed": ["Added 9 buildScoreRow unit tests", "Fixed intercom asymmetry in no-signals path", "SyncRunner passes intercomData consistently"],
+  "findings_deferred": ["Redundant penalty computation (pre-existing pattern)"],
+  "tests": "185 passed, 13 suites",
+  "ts": "2026-03-26T21:00:00Z"
 }
