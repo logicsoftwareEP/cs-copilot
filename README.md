@@ -101,12 +101,36 @@ Six tables:
 cd backend
 npm run build        # tsc → dist/
 npm start            # func start (local dev)
-npm test             # jest (178 tests across 13 suites)
+npm test             # jest (189 tests across 14 suites)
 
 # Frontend
 cd frontend
 npm run dev          # vite dev server
-npm run build        # tsc + vite build
+npm run build        # tsc + vite build (reads .env.production)
+```
+
+## Deploy
+
+```bash
+# Backend — build and publish to Azure Functions
+cd backend
+npm run build
+npx azure-functions-core-tools@4.0.6610 azure functionapp publish cs-copilot-func --javascript
+
+# Frontend — build with production env vars and deploy to SWA
+cd frontend
+npm run build                    # reads .env.production (gitignored)
+npx @azure/static-web-apps-cli deploy dist --app-name cs-copilot-ui --env production
+```
+
+**API key management:** The function key lives in `frontend/.env.production` (gitignored, never committed). To rotate:
+
+```bash
+az functionapp keys set --name cs-copilot-func --resource-group customersuccess \
+  --key-type functionKeys --key-name default --key-value ""
+az functionapp keys list --name cs-copilot-func --resource-group customersuccess \
+  --query "functionKeys.default" -o tsv
+# Update VITE_API_KEY in frontend/.env.production, then rebuild + redeploy frontend
 ```
 
 ## Environment Variables

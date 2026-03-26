@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cd backend
 npm run build        # tsc -> dist/
 npm start            # func start
-npm test             # jest (178 tests, 13 suites)
+npm test             # jest (189 tests, 14 suites)
 
 # Frontend
 cd frontend
