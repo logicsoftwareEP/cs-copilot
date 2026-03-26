@@ -1,7 +1,7 @@
 import { AmplitudeSignals } from '../clients/amplitudeClient';
 import { ZendeskTicketData } from '../clients/zendeskClient';
 import { IntercomAggregated } from '../services/intercomStore';
-import { HealthTier } from '../types';
+import { ChurnScore, HealthTier } from '../types';
 
 // Component maximums — used for normalisation
 const LICENSE_MAX = 60;
@@ -294,6 +294,86 @@ export function computeIntercomBonus(data: IntercomAggregated): IntercomBonusRes
     quickResolutionBonus,
     aiBonus,
     engagementBonus,
+  };
+}
+
+// ── Score row builder ───────────────────────────────────────────────────────
+
+export interface ScoreRowInput {
+  accountId: string;
+  date: string;
+  signals: AmplitudeSignals | null;
+  licenses: number | null;
+  featureEvents: { category: string }[];
+  zendeskData: ZendeskTicketData | null;
+  intercomData: IntercomAggregated | null;
+  previousScore: number | null;
+  aliasStatus: 'valid' | 'not-found' | null;
+}
+
+/**
+ * Build a complete ChurnScore row from inputs. Handles all 4 patterns:
+ *   1. Unmapped (no alias): score=null, tier='unmapped'
+ *   2. Alias not found: score=null, tier='unmapped', aliasStatus='not-found'
+ *   3. Successful scoring: full computation
+ *   4. Error fallback: score=null (signals=null)
+ *
+ * Pure function — no side effects, no storage calls.
+ */
+export function buildScoreRow(input: ScoreRowInput): ChurnScore {
+  const { accountId, date, signals, licenses, featureEvents, zendeskData, intercomData, previousScore, aliasStatus } = input;
+  const computedAt = new Date().toISOString();
+
+  // Patterns 1, 2, 4: no signals or unmapped
+  if (!signals) {
+    const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
+    return {
+      accountId, date, score: null, tier: 'unmapped',
+      dauWauTrend: null, monthlyActiveUsers: null, licenseUtilization: null,
+      featuresUsed: null, featureDetails: null, scoreDelta: null, computedAt,
+      zendeskPenalty: penalty ? penalty.totalPenalty : null,
+      zendeskDetails: penalty ? JSON.stringify(penalty) : null,
+      intercomPenalty: null, intercomBonus: null, intercomDetails: null,
+      aliasStatus,
+    };
+  }
+
+  // Pattern 3: successful scoring
+  const baseResult = computeScore(signals, licenses);
+  const adjusted = applyAllPenalties(baseResult, zendeskData, intercomData);
+  const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
+  const intercomPenaltyResult = intercomData ? computeIntercomPenalty(intercomData) : null;
+  const intercomBonusResult = intercomData ? computeIntercomBonus(intercomData) : null;
+
+  let featureDetailsJson: string | null = null;
+  if (signals.featureBreadth) {
+    const details: Record<string, boolean> = {};
+    for (const fe of featureEvents) {
+      details[fe.category] = signals.featureBreadth.used.includes(fe.category);
+    }
+    featureDetailsJson = JSON.stringify(details);
+  }
+
+  let scoreDelta: number | null = null;
+  if (previousScore !== null && adjusted.score !== null) {
+    scoreDelta = adjusted.score - previousScore;
+  }
+
+  return {
+    accountId, date,
+    score: adjusted.score, tier: adjusted.tier,
+    dauWauTrend: signals.dauWauTrend,
+    monthlyActiveUsers: adjusted.monthlyActiveUsers,
+    licenseUtilization: adjusted.licenseUtilization,
+    featuresUsed: signals.featureBreadth?.used.length ?? null,
+    featureDetails: featureDetailsJson,
+    scoreDelta, computedAt,
+    zendeskPenalty: adjusted.zendeskPenalty,
+    zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
+    intercomPenalty: intercomPenaltyResult ? intercomPenaltyResult.totalPenalty : null,
+    intercomBonus: intercomBonusResult ? intercomBonusResult.totalBonus : null,
+    intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyResult, ...intercomBonusResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
+    aliasStatus,
   };
 }
 
