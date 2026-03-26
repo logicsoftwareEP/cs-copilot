@@ -1272,11 +1272,10 @@ export default function Portfolio() {
                             )}
                           </td>
 
-                          {/* Amplitude Alias (inline editable, read-only for CSMs) */}
+                          {/* Amplitude Alias (inline editable by all roles) */}
                           <td
                             className="px-4 py-3"
                             onClick={e => {
-                              if (isCSM) return;
                               e.stopPropagation();
                               setEditingAlias(account.accountId);
                               setAliasInput(account.amplitudeAlias ?? '');
