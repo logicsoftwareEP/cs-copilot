@@ -21,6 +21,7 @@ function mockRequest(email?: string): any {
 beforeEach(() => {
   jest.clearAllMocks();
   delete process.env.SKIP_AUTH;
+  delete process.env.WEBSITE_SITE_NAME;
   MockUserStore.mockImplementation(() => ({
     ensureTable: jest.fn().mockResolvedValue(undefined),
     getUser: jest.fn(),
@@ -54,6 +55,20 @@ describe('authenticateRequest', () => {
   it('returns mock admin when SKIP_AUTH is set', async () => {
     process.env.SKIP_AUTH = 'true';
     const user = await authenticateRequest(mockRequest());
+    expect(user.role).toBe('admin');
+  });
+
+  it('ignores SKIP_AUTH when WEBSITE_SITE_NAME is set (production)', async () => {
+    process.env.SKIP_AUTH = 'true';
+    process.env.WEBSITE_SITE_NAME = 'cs-copilot-func';
+    await expect(authenticateRequest(mockRequest())).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('uses X-User-Email in SKIP_AUTH mode for local dev', async () => {
+    process.env.SKIP_AUTH = 'true';
+    const req = { headers: new Map([['x-user-email', 'test@dev.com']]) };
+    const user = await authenticateRequest(req as any);
+    expect(user.email).toBe('test@dev.com');
     expect(user.role).toBe('admin');
   });
 });

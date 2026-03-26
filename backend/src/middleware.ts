@@ -9,7 +9,10 @@ type AuthenticatedHandler = (
 ) => Promise<HttpResponseInit>;
 
 export function corsHeaders(): Record<string, string> {
-  const origin = process.env.SWA_ORIGIN || '*';
+  // In production (WEBSITE_SITE_NAME set by Azure), require SWA_ORIGIN.
+  // Fallback to '*' only in local dev.
+  const isProduction = !!process.env.WEBSITE_SITE_NAME;
+  const origin = process.env.SWA_ORIGIN || (isProduction ? '' : '*');
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
@@ -28,7 +31,9 @@ export function withAuth(
     try {
       const user = await authenticateRequest(req);
       if (roles.length > 0) requireRole(user, ...roles);
-      return await handler(req, context, user);
+      const result = await handler(req, context, user);
+      // Auto-merge CORS headers into handler response
+      return { ...result, headers: { ...headers, ...result.headers } };
     } catch (err) {
       if (err instanceof AuthError) {
         return { status: err.status, headers, body: err.message };
