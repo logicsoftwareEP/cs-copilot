@@ -86,6 +86,9 @@ export interface ChurnScore {
   computedAt: string;
   zendeskPenalty: number | null;
   zendeskDetails: string | null;
+  intercomPenalty: number | null;
+  intercomBonus: number | null;
+  intercomDetails: string | null;
   aliasStatus: 'valid' | 'not-found' | null;
 }
 
