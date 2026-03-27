@@ -95,7 +95,7 @@ export default function Portfolio() {
               </svg>
             )}
           </button>
-          {!d.isCSM && (
+          {d.isAdmin && (
             <button
               onClick={d.handleSync}
               disabled={d.syncing}

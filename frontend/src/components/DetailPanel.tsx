@@ -297,10 +297,10 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
                       <span>Stable (-10% to +10%)    <b className="text-obs-text">15</b></span>
                       <span>Features {'\u2265'}75%             <b className="text-obs-text">15</b></span>
                       <span>Features {'\u2265'}50%             <b className="text-obs-text">10</b></span>
-                      <span>Intercom quick resolution  <b className="text-obs-text">+5</b></span>
+                      <span>Intercom quick resolution  <b className="text-obs-text">+4</b></span>
                       <span>Intercom AI-handled        <b className="text-obs-text">+3</b></span>
-                      <span>Intercom engagement        <b className="text-obs-text">+2</b></span>
-                      <span>Intercom open penalty      <b className="text-obs-text">-2 to -8</b></span>
+                      <span>Intercom engagement        <b className="text-obs-text">+3</b></span>
+                      <span>Intercom open penalty      <b className="text-obs-text">-2 to -12</b></span>
                     </div>
                     <div className="border-t border-obs-edge pt-2 text-[14px] text-obs-ghost">
                       {hasLicenses
