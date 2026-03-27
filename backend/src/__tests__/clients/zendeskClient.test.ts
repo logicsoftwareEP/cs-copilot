@@ -1,4 +1,4 @@
-import { fetchAllZendeskTickets, fetchZendeskTickets } from '../../clients/zendeskClient';
+import { fetchAllZendeskTickets } from '../../clients/zendeskClient';
 
 const mockFetch = jest.fn();
 (global as any).fetch = mockFetch;
@@ -103,34 +103,6 @@ describe('zendeskClient', () => {
 
       const result = await fetchAllZendeskTickets(SUBDOMAIN, EMAIL, API_TOKEN);
       expect(result).toBeNull();
-    });
-  });
-
-  describe('fetchZendeskTickets (legacy wrapper)', () => {
-    it('returns data for a matching domain', async () => {
-      const now = new Date().toISOString();
-      mockFetch
-        .mockResolvedValueOnce(ticketsPage([
-          { id: 1, status: 'open', priority: null, created_at: now, requester_id: 100 },
-        ]))
-        .mockResolvedValueOnce(usersPage([{ id: 100, email: 'a@acme.com' }]));
-
-      const result = await fetchZendeskTickets(SUBDOMAIN, EMAIL, API_TOKEN, 'acme.com');
-      expect(result).not.toBeNull();
-      expect(result!.openCount).toBe(1);
-    });
-
-    it('returns zeros for a domain with no tickets', async () => {
-      mockFetch
-        .mockResolvedValueOnce(ticketsPage([
-          { id: 1, status: 'open', priority: null, created_at: new Date().toISOString(), requester_id: 100 },
-        ]))
-        .mockResolvedValueOnce(usersPage([{ id: 100, email: 'a@other.com' }]));
-
-      const result = await fetchZendeskTickets(SUBDOMAIN, EMAIL, API_TOKEN, 'acme.com');
-      expect(result).not.toBeNull();
-      expect(result!.openCount).toBe(0);
-      expect(result!.ticketVolume).toBe(0);
     });
   });
 });

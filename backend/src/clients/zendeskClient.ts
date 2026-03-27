@@ -149,15 +149,3 @@ export async function fetchAllZendeskTickets(
     return null;
   }
 }
-
-// Keep old function signature for backward compatibility with tests
-export async function fetchZendeskTickets(
-  subdomain: string,
-  email: string,
-  apiToken: string,
-  domain: string
-): Promise<ZendeskTicketData | null> {
-  const allData = await fetchAllZendeskTickets(subdomain, email, apiToken);
-  if (allData === null) return null;
-  return allData.get(domain) ?? { ticketVolume: 0, openCount: 0, highPriorityCount: 0, urgentCount: 0 };
-}
