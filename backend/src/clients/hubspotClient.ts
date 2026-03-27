@@ -1,6 +1,6 @@
 /**
- * DISABLED: Data source switched to SQL Server [analytics].[ClientsOverview].
- * Retained for rollback. Controlled by DATA_SOURCE env var (default: 'sql').
+ * @deprecated Retained for DATA_SOURCE=hubspot rollback. Do not add new features.
+ * Primary data source is SQL Server (sqlClient.ts).
  */
 import { Account } from '../types';
 
