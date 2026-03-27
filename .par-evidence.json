@@ -1,10 +1,10 @@
 {
-  "sprint": 3,
-  "claude_product": "ACCEPTED",
+  "sprint": 4,
+  "claude_product": "SKIPPED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "findings_fixed": ["SortTH extracted outside render to prevent remount cycles", "formatArr type signature corrected"],
-  "findings_deferred": ["Stale closure in startPolling (low probability)", "Sparkline gradient ID collision (single instance only)", "Additional scoreHelper test coverage"],
-  "tests": "28 frontend + 185 backend",
-  "ts": "2026-03-26T22:00:00Z"
+  "governance": "standard",
+  "complexity": "simple",
+  "tests": "183 backend + 28 frontend",
+  "ts": "2026-03-27T03:00:00Z"
 }
