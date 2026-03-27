@@ -112,10 +112,9 @@ npm run build        # tsc + vite build (reads .env.production)
 ## Deploy
 
 ```bash
-# Backend — build and publish to Azure Functions
+# Backend — zip deploy (strips devDeps, ~30s upload vs ~5min with func publish)
 cd backend
-npm run build
-npx azure-functions-core-tools@4.0.6610 azure functionapp publish cs-copilot-func --javascript
+bash scripts/deploy.sh
 
 # Frontend — build with production env vars and deploy to SWA
 cd frontend
