@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cd backend
 npm run build        # tsc -> dist/
 npm start            # func start
-npm test             # jest (189 tests, 14 suites)
+npm test             # jest (183 tests, 13 suites)
 
 # Frontend
 cd frontend
@@ -17,7 +17,9 @@ npm run dev          # vite dev server
 npm run build        # tsc + vite build
 ```
 
-**Backend tests** live in `src/__tests__/**/*.test.ts` (ts-jest).
+**Deploy:** `bash backend/scripts/deploy.sh` (builds + zip deploys to Azure Functions).
+
+**Backend tests** live in `src/__tests__/**/*.test.ts` (ts-jest). **Frontend tests** live in `src/__tests__/` (vitest, 28 tests, 2 suites).
 
 ## Architecture
 
@@ -53,7 +55,7 @@ Entry point `src/index.ts` imports all function modules as side effects.
 - `userStore.ts` - `UserStore` for `users` table. `partitionKey = 'users'`, `rowKey = email (lowercase)`.
 - `intercomStore.ts` - `IntercomStore` for `intercomscores` table. `partitionKey = domain`, `rowKey = YYYY-MM-DD`. Daily snapshots aggregated for 30d scoring.
 - `syncStatusStore.ts` - `SyncStatusStore` for `syncstatus` table. Single row tracking sync state (running/completed/failed) for UI polling.
-- `healthScoreService.ts` - Pure scoring: licence utilisation (0–60) + activity trend (0–25) + feature adoption (0–15) + Intercom bonus (0–10) − Zendesk/Intercom penalty (0 to -20).
+- `healthScoreService.ts` - Pure scoring: licence utilisation (0–60) + activity trend (0–25) + feature adoption (0–15) + Intercom bonus (0–10) − Zendesk/Intercom penalty (0 to -20). `buildScoreRow()` builds a complete `ChurnScore` entity from inputs (used by SyncRunner and AccountsApi PATCH).
 
 **Patterns to follow:**
 - All env vars go through `getConfig()` in `config.ts`. `requireEnv()` hard-crashes on missing vars; optional vars have defaults.
@@ -62,6 +64,8 @@ Entry point `src/index.ts` imports all function modules as side effects.
 - Zod validates external inputs in MappingApi and UsersApi. JSON API uses `camelCase`.
 - New functions must be added to `src/index.ts` as an import side effect.
 - Account writes come from `SyncRunner.runSync()` (timer or on-demand via `POST /api/sync`).
+- `withAuth(handler, ...roles)` in `middleware.ts` wraps HTTP handlers with auth + CORS + error handling. Handles OPTIONS preflight, calls `authenticateRequest()`, checks roles, and merges CORS headers into responses. All API functions use this pattern.
+- `authLevel: 'function'` is set on all HTTP triggers (requires function key via `?code=` param) until SWA Standard upgrade enables linked backend with EasyAuth passthrough.
 
 ### Frontend (`frontend/`) - React 18, Vite, TypeScript, Tailwind CSS, react-router-dom v7
 
@@ -81,6 +85,10 @@ SPA with client-side routing and Azure SWA Entra ID authentication:
 - Supervisors: see all accounts, can edit ARR/licences/mappings
 - Admins: full access + user management + sync trigger
 
+**`src/components/`** - Reusable UI components: `TierBadge`, `ScoreBar`, `Sparkline`, `MetricCard`, `DetailPanel`, `SortIcon`, `Spinner`, `ObsLogo`. Shared helpers in `scoreHelpers.ts` and `constants.ts`.
+
+**`src/hooks/`** - Custom hooks: `usePortfolioData.ts` (fetches accounts + mapping, manages loading/error state).
+
 **`src/services/api.ts`** - all fetch calls centralised here. Uses `VITE_API_URL` + `VITE_API_KEY` (function key via `?code=`). Sends `X-User-Email` header on every request via `setAuthEmail()`. Do not make fetch calls anywhere else.
 
 **`staticwebapp.config.json`** - SPA fallback + SWA auth: requires `authenticated` role on all routes, blocks GitHub/Twitter providers, 401 redirects to `/.auth/login/aad`.
@@ -91,6 +99,7 @@ VITE_API_URL=http://localhost:7071/api
 VITE_API_KEY=<function-key-from-local-settings>
 VITE_SKIP_AUTH=true
 ```
+`.env.production` (gitignored) contains `VITE_API_URL` and `VITE_API_KEY` for production builds.
 
 ## Data Model
 
@@ -120,7 +129,7 @@ SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only cr
 
 **Required:** `AZURE_STORAGE_CONNECTION_STRING`, `AMPLITUDE_API_KEY`, `AMPLITUDE_SECRET_KEY`, `SQL_SERVER_DETAILS`, `SQL_LOGIN`, `SQL_PASSWORD`
 
-**Optional:** `DATA_SOURCE` (default `sql`), `HUBSPOT_API_KEY` (for rollback), `AMPLITUDE_ACCOUNT_PROPERTY` (default `gp:alias`), `AMPLITUDE_FEATURE_EVENTS` (JSON), `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`, `INTERCOM_ACCESS_TOKEN`, `SKIP_AUTH` (local dev only)
+**Optional:** `DATA_SOURCE` (default `sql`), `HUBSPOT_API_KEY` (for rollback), `AMPLITUDE_ACCOUNT_PROPERTY` (default `gp:alias`), `AMPLITUDE_FEATURE_EVENTS` (JSON), `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`, `INTERCOM_ACCESS_TOKEN`, `SKIP_AUTH` (local dev only), `SWA_ORIGIN` (locks CORS to frontend domain; defaults to `*`)
 
 ## Amplitude API — CRITICAL
 
