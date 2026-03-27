@@ -124,11 +124,8 @@ async function getAccount(
       return { status: 204, headers: headers };
     }
 
-    // ── POST: refresh score for a single account ──────────────────────────────
+    // ── POST: refresh score for a single account (all authenticated roles) ────
     if (req.method === 'POST') {
-      if (user.role !== 'admin' && user.role !== 'supervisor') {
-        return { status: 403, headers, body: 'Requires role: admin or supervisor' };
-      }
 
       const config = getConfig();
       const { accounts, scores, mappings } = makeStores();
@@ -141,6 +138,11 @@ async function getAccount(
 
       if (!account) {
         return { status: 404, headers: headers, body: 'Account not found.' };
+      }
+
+      // CSM can only refresh their own accounts
+      if (user.role === 'csm' && (account.csmEmail ?? '').toLowerCase() !== user.email.toLowerCase()) {
+        return { status: 403, headers, body: 'Access denied.' };
       }
 
       const amplitudeAlias = mapping?.amplitudeAlias;

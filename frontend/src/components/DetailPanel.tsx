@@ -16,7 +16,7 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
 }) {
   const { user } = useAuth();
   const isCSM = user?.role === 'csm';
-  const canRefresh = user?.role === 'admin' || user?.role === 'supervisor';
+  const canRefresh = !!user; // all authenticated users can refresh scores
   const [detail, setDetail] = useState<AccountDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
