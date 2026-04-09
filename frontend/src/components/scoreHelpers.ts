@@ -84,14 +84,14 @@ export function intercomBonusInfo(details: IntercomDetails | null): { pts: strin
 }
 
 export function cxScoreInfo(details: IntercomDetails | null): { pts: string; label: string; detail: string; hint: string | null } {
-  if (!details || details.avgCxScore === null) {
+  if (!details || details.avgCxScore == null) {
     return { pts: 'N/A', label: 'No data', detail: 'No CX Score ratings available', hint: null };
   }
-  if (details.cxScoreCount < 3) {
-    return { pts: 'N/A', label: 'Insufficient data', detail: `Only ${details.cxScoreCount} rated conversation(s) — need 3+`, hint: null };
+  if ((details.cxScoreCount ?? 0) < 3) {
+    return { pts: 'N/A', label: 'Insufficient data', detail: `Only ${details.cxScoreCount ?? 0} rated conversation(s) — need 3+`, hint: null };
   }
 
-  const net = details.netCxScore;
+  const net = details.netCxScore ?? 0;
   const avg = details.avgCxScore.toFixed(1);
 
   if (net === 0) {
