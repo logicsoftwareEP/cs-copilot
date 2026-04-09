@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { dauWauInfo, licenseInfo, formatArr, renewalInfo } from '../../components/scoreHelpers';
+import { dauWauInfo, licenseInfo, formatArr, renewalInfo, cxScoreInfo } from '../../components/scoreHelpers';
+import { IntercomDetails } from '../../types';
 
 describe('dauWauInfo', () => {
   it('returns "No data" when trend is null', () => {
@@ -135,5 +136,59 @@ describe('renewalInfo', () => {
     const far = new Date(Date.now() + 86_400_000 * 200).toISOString();
     const result = renewalInfo(far);
     expect(result.urgency).toBe('ok');
+  });
+});
+
+describe('cxScoreInfo', () => {
+  function makeDetails(overrides: Partial<IntercomDetails> = {}): IntercomDetails {
+    return {
+      openPenalty: 0, slowPenalty: 0, openCount: 0,
+      avgResponseTime: null, quickResolutionBonus: 0, quickResolutions: 0,
+      aiBonus: 0, aiHandled: 0, engagementBonus: 0, conversationVolume: 0, totalBonus: 0,
+      cxScorePenalty: 0, cxScoreBonus: 0, netCxScore: 0, avgCxScore: null, cxScoreCount: 0,
+      ...overrides,
+    };
+  }
+
+  it('returns N/A when details is null', () => {
+    const result = cxScoreInfo(null);
+    expect(result.pts).toBe('N/A');
+    expect(result.label).toBe('No data');
+  });
+
+  it('returns N/A when avgCxScore is null', () => {
+    const result = cxScoreInfo(makeDetails({ avgCxScore: null }));
+    expect(result.pts).toBe('N/A');
+    expect(result.label).toBe('No data');
+  });
+
+  it('returns insufficient data when cxScoreCount < 3', () => {
+    const result = cxScoreInfo(makeDetails({ avgCxScore: 4.0, cxScoreCount: 2, netCxScore: 5 }));
+    expect(result.pts).toBe('N/A');
+    expect(result.label).toBe('Insufficient data');
+    expect(result.detail).toContain('2 rated conversation(s)');
+  });
+
+  it('returns positive score for high avg (4.5+)', () => {
+    const result = cxScoreInfo(makeDetails({ avgCxScore: 4.5, cxScoreCount: 10, netCxScore: 5, cxScoreBonus: 5 }));
+    expect(result.pts).toBe('+5');
+    expect(result.label).toBe('Avg 4.5/5');
+    expect(result.detail).toContain('10 conversations rated');
+    expect(result.hint).toContain('Excellent');
+  });
+
+  it('returns negative score for low avg (<2.0)', () => {
+    const result = cxScoreInfo(makeDetails({ avgCxScore: 1.5, cxScoreCount: 8, netCxScore: -8, cxScorePenalty: -8 }));
+    expect(result.pts).toBe('-8');
+    expect(result.label).toBe('Avg 1.5/5');
+    expect(result.detail).toContain('8 conversations rated');
+    expect(result.hint).toContain('Poor');
+  });
+
+  it('returns neutral for mid-range avg (3.2)', () => {
+    const result = cxScoreInfo(makeDetails({ avgCxScore: 3.2, cxScoreCount: 5, netCxScore: 0 }));
+    expect(result.pts).toBe('0');
+    expect(result.label).toBe('Avg 3.2/5');
+    expect(result.hint).toContain('Neutral');
   });
 });

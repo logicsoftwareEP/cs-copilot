@@ -1,4 +1,4 @@
-import { AccountSummary, AccountDetail, User } from '../types';
+import { AccountSummary, AccountDetail, User, IntercomDiagnostics, ZendeskDiagnostics } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 const API_KEY = import.meta.env.VITE_API_KEY ?? '';
@@ -127,4 +127,17 @@ export async function deleteUser(email: string): Promise<void> {
     method: 'DELETE',
   });
   if (!res.ok) { const t = await res.text(); throw new Error(t || `Delete failed: ${res.status}`); }
+}
+
+// Diagnostics
+export async function getDiagnosticsIntercom(): Promise<IntercomDiagnostics> {
+  const res = await apiFetch('/diagnostics/intercom');
+  if (!res.ok) throw new Error(`Failed to fetch Intercom diagnostics: ${res.status}`);
+  return res.json();
+}
+
+export async function getDiagnosticsZendesk(): Promise<ZendeskDiagnostics> {
+  const res = await apiFetch('/diagnostics/zendesk');
+  if (!res.ok) throw new Error(`Failed to fetch Zendesk diagnostics: ${res.status}`);
+  return res.json();
 }

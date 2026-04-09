@@ -75,6 +75,11 @@ export default function Portfolio() {
               Admin
             </Link>
           )}
+          {d.isAdmin && (
+            <Link to="/diagnostics" className="text-[14px] text-obs-accent hover:text-obs-glow transition-colors">
+              Diagnostics
+            </Link>
+          )}
 
           <a href="/.auth/logout" className="text-[14px] text-obs-dim hover:text-obs-text transition-colors">
             Logout

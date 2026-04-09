@@ -94,6 +94,10 @@ function IntercomSection({ ic, penalty, bonus }: { ic: IntercomDetails; penalty:
         <Row label="AI Bonus" value={`+${ic.aiBonus}`} />
         <Row label="Engagement Bonus" value={`+${ic.engagementBonus}`} />
         <Row label="Total Bonus" value={`+${bonus ?? ic.totalBonus}`} />
+        <Row label="CX Score (avg)" value={ic.avgCxScore !== null ? `${ic.avgCxScore.toFixed(1)}/5` : '—'} />
+        <Row label="CX Score Count" value={String(ic.cxScoreCount ?? 0)} />
+        <Row label="CX Score Penalty" value={String(ic.cxScorePenalty ?? 0)} warn={(ic.cxScorePenalty ?? 0) < 0} />
+        <Row label="CX Score Bonus" value={ic.cxScoreBonus ? `+${ic.cxScoreBonus}` : '0'} />
       </div>
     </div>
   );
@@ -108,18 +112,22 @@ function ScoreSummary({ detail }: { detail: AccountDetail }) {
   const zdPenalty = bd.zendeskPenalty ?? 0;
   const icPenalty = bd.intercomPenalty ?? 0;
   const icBonus = bd.intercomBonus ?? 0;
-  const combinedPenalty = Math.max(zdPenalty + icPenalty, -20);
+  const cxPenalty = bd.cxScorePenalty ?? 0;
+  const cxBonus = bd.cxScoreBonus ?? 0;
+  const combinedPenalty = Math.max(zdPenalty + icPenalty + cxPenalty, -20);
 
   return (
     <div>
       <h4 className="text-[13px] font-semibold uppercase tracking-wider text-obs-ghost mb-2">Score Calculation</h4>
       <div className="space-y-0">
-        <Row label="Base Score" value={detail.score !== null ? String(detail.score - combinedPenalty - icBonus) : '—'} />
+        <Row label="Base Score" value={detail.score !== null ? `${(detail.score ?? 0) - combinedPenalty - icBonus - cxBonus}${detail.score === 0 || detail.score === 110 ? ' (clamped)' : ''}` : '—'} />
         <Row label="Normalised Out Of" value={hasLicenses ? '100' : '40'} />
         <Row label="Zendesk Penalty" value={bd.zendeskPenalty !== null ? String(bd.zendeskPenalty) : 'N/A'} warn={(bd.zendeskPenalty ?? 0) < 0} />
         <Row label="Intercom Penalty" value={bd.intercomPenalty !== null ? String(bd.intercomPenalty) : 'N/A'} warn={(bd.intercomPenalty ?? 0) < 0} />
         <Row label="Combined Penalty (cap -20)" value={String(combinedPenalty)} warn={combinedPenalty < 0} />
         <Row label="Intercom Bonus" value={bd.intercomBonus !== null ? `+${bd.intercomBonus}` : 'N/A'} />
+        <Row label="CX Score Penalty" value={bd.cxScorePenalty !== null ? String(bd.cxScorePenalty) : 'N/A'} warn={(bd.cxScorePenalty ?? 0) < 0} />
+        <Row label="CX Score Bonus" value={bd.cxScoreBonus !== null ? `+${bd.cxScoreBonus}` : 'N/A'} />
         <Row label="Final Score" value={detail.score !== null ? String(detail.score) : '—'} />
         <Row label="Tier" value={detail.tier ?? '—'} />
       </div>
@@ -207,8 +215,8 @@ function AccountPanel({ accountId, onClose }: { accountId: string; onClose: () =
                     <td className="py-1 pr-3 text-right text-obs-dim">{row.scoreDelta !== null ? (row.scoreDelta >= 0 ? `+${row.scoreDelta}` : String(row.scoreDelta)) : '—'}</td>
                     <td className="py-1 pr-3 text-obs-dim">{row.tier}</td>
                     <td className="py-1 pr-3 text-right text-obs-dim">{row.zendeskPenalty ?? '—'}</td>
-                    <td className="py-1 pr-3 text-right text-obs-dim">{(row as any).intercomPenalty ?? '—'}</td>
-                    <td className="py-1 text-right text-obs-dim">{(row as any).intercomBonus ?? '—'}</td>
+                    <td className="py-1 pr-3 text-right text-obs-dim">{row.intercomPenalty ?? '—'}</td>
+                    <td className="py-1 text-right text-obs-dim">{row.intercomBonus ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

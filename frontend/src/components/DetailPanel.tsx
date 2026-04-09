@@ -3,7 +3,7 @@ import { getAccountDetail, refreshAccountScore } from '../services/api';
 import { AccountSummary, AccountDetail } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { TIER_CFG, RENEWAL_COLOURS } from './constants';
-import { dauWauInfo, licenseInfo, featureBreadthInfo, zendeskPenaltyInfo, intercomPenaltyInfo, intercomBonusInfo, formatArr, renewalInfo } from './scoreHelpers';
+import { dauWauInfo, licenseInfo, featureBreadthInfo, zendeskPenaltyInfo, intercomPenaltyInfo, intercomBonusInfo, cxScoreInfo, formatArr, renewalInfo } from './scoreHelpers';
 import { TierBadge } from './TierBadge';
 import { ScoreBar } from './ScoreBar';
 import { Spinner } from './Spinner';
@@ -268,6 +268,35 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
                     </div>
                   )}
 
+                  {/* Intercom CX Score card */}
+                  {bd && (() => {
+                    const cx = cxScoreInfo(bd?.intercomDetails ?? null);
+                    return (
+                      <div className="bg-obs-card rounded-lg px-4 py-3 border border-obs-edge">
+                        <div className="flex items-baseline justify-between">
+                          <div>
+                            <p className="text-[14px] font-semibold text-obs-bright">Intercom CX Score</p>
+                            <p className="text-[14px] text-obs-ghost mt-0.5">AI-assessed satisfaction rating</p>
+                          </div>
+                          <p className={`text-[16px] font-bold font-mono flex-shrink-0 ml-3 ${
+                            cx.pts === 'N/A' ? 'text-obs-ghost'
+                            : cx.pts === '0' ? 'text-obs-dim'
+                            : cx.pts.startsWith('+') ? 'text-tier-healthy'
+                            : Number(cx.pts) >= -3 ? 'text-tier-watch'
+                            : 'text-tier-critical'
+                          }`}>
+                            {cx.pts}
+                          </p>
+                        </div>
+                        <p className="text-[14px] text-obs-dim mt-2 leading-relaxed">
+                          <span className="font-medium text-obs-text">{cx.label}</span>
+                          {' · '}{cx.detail}
+                        </p>
+                        {cx.hint && <p className="text-[14px] text-obs-ghost mt-0.5 leading-relaxed">{cx.hint}</p>}
+                      </div>
+                    );
+                  })()}
+
                   {/* Combined penalty cap note */}
                   {bd?.zendeskPenalty != null && bd?.intercomPenalty != null && (
                     <p className="text-[12px] text-obs-ghost italic px-1">Combined support penalty capped at -20</p>
@@ -309,11 +338,13 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
                       <span>Intercom AI-handled        <b className="text-obs-text">+3</b></span>
                       <span>Intercom engagement        <b className="text-obs-text">+3</b></span>
                       <span>Intercom open penalty      <b className="text-obs-text">-2 to -12</b></span>
+                      <span>CX Score {'\u2265'}4.5  <b className="text-obs-text">+5</b></span>
+                      <span>CX Score &lt;2.0  <b className="text-obs-text">-8</b></span>
                     </div>
                     <div className="border-t border-obs-edge pt-2 text-[14px] text-obs-ghost">
                       {hasLicenses
                         ? (intercomBonus > 0
-                            ? 'Score out of 110 max (Intercom engagement bonus active)'
+                            ? 'Score out of 110 max (Intercom + CX bonuses active)'
                             : 'Score out of 100 (all three signals active)')
                         : 'Score out of 40 — enter licence count to unlock utilisation'}
                     </div>

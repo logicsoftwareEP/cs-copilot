@@ -16,6 +16,8 @@ export interface IntercomAggregated {
   avgResponseTime: number;
   quickResolutions: number;
   aiHandled: number;
+  avgCxScore: number | null;
+  cxScoreCount: number;
 }
 
 interface IntercomEntity {
@@ -28,6 +30,8 @@ interface IntercomEntity {
   aiHandled: number;
   totalResponseTime: number;
   responseCount: number;
+  cxScoreTotal: number;
+  cxScoreCount: number;
 }
 
 function toEntity(domain: string, date: string, data: IntercomDailySnapshot): IntercomEntity {
@@ -41,6 +45,8 @@ function toEntity(domain: string, date: string, data: IntercomDailySnapshot): In
     aiHandled: data.aiHandled,
     totalResponseTime: data.totalResponseTime,
     responseCount: data.responseCount,
+    cxScoreTotal: data.cxScoreTotal,
+    cxScoreCount: data.cxScoreCount,
   };
 }
 
@@ -54,6 +60,8 @@ function fromEntity(entity: IntercomEntity): IntercomDailySnapshot & { date: str
     aiHandled: entity.aiHandled,
     totalResponseTime: entity.totalResponseTime,
     responseCount: entity.responseCount,
+    cxScoreTotal: entity.cxScoreTotal ?? 0,
+    cxScoreCount: entity.cxScoreCount ?? 0,
   };
 }
 
@@ -114,7 +122,7 @@ export class IntercomStore {
    */
   aggregate(snapshots: Array<IntercomDailySnapshot & { date: string }>): IntercomAggregated {
     if (snapshots.length === 0) {
-      return { conversationVolume: 0, openCount: 0, avgResponseTime: 0, quickResolutions: 0, aiHandled: 0 };
+      return { conversationVolume: 0, openCount: 0, avgResponseTime: 0, quickResolutions: 0, aiHandled: 0, avgCxScore: null, cxScoreCount: 0 };
     }
 
     let conversationVolume = 0;
@@ -122,6 +130,8 @@ export class IntercomStore {
     let aiHandled = 0;
     let totalResponseTime = 0;
     let responseCount = 0;
+    let cxScoreTotal = 0;
+    let cxScoreCount = 0;
 
     // Snapshots are expected to be sorted newest-first; take openCount from the first entry.
     const openCount = snapshots[0].openCount;
@@ -132,11 +142,34 @@ export class IntercomStore {
       aiHandled += s.aiHandled;
       totalResponseTime += s.totalResponseTime;
       responseCount += s.responseCount;
+      cxScoreTotal += s.cxScoreTotal;
+      cxScoreCount += s.cxScoreCount;
     }
 
     const avgResponseTime = responseCount > 0 ? totalResponseTime / responseCount : 0;
+    const avgCxScore = cxScoreCount > 0 ? cxScoreTotal / cxScoreCount : null;
 
-    return { conversationVolume, openCount, avgResponseTime, quickResolutions, aiHandled };
+    return { conversationVolume, openCount, avgResponseTime, quickResolutions, aiHandled, avgCxScore, cxScoreCount };
+  }
+
+  /**
+   * Return all snapshots across all domains within the last `days` days, sorted newest-first.
+   * Each returned item includes a `domain` field (the partitionKey).
+   */
+  async getAllSnapshots(days: number): Promise<Array<IntercomDailySnapshot & { date: string; domain: string }>> {
+    const cutoff = nDaysAgoISO(days);
+    const rows: Array<IntercomDailySnapshot & { date: string; domain: string }> = [];
+
+    for await (const entity of this.client.listEntities<IntercomEntity>({
+      queryOptions: {
+        filter: odata`RowKey ge ${cutoff}`,
+      },
+    })) {
+      rows.push({ ...fromEntity(entity), domain: entity.partitionKey });
+    }
+
+    rows.sort((a, b) => b.date.localeCompare(a.date));
+    return rows;
   }
 
   /**

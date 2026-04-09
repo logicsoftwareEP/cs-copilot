@@ -705,6 +705,8 @@ describe('runSync', () => {
       aiHandled: 2,
       totalResponseTime: 18000,
       responseCount: 5,
+      cxScoreTotal: 0,
+      cxScoreCount: 0,
     };
     mockFetchIntercom.mockResolvedValue(new Map([['alpha.com', snapshot]]));
 
@@ -715,6 +717,8 @@ describe('runSync', () => {
       avgResponseTime: 3600,
       quickResolutions: 3,
       aiHandled: 2,
+      avgCxScore: null,
+      cxScoreCount: 0,
     };
     MockIntercomStore.mockImplementation(() => ({
       ensureTable: jest.fn().mockResolvedValue(undefined),

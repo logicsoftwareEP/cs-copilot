@@ -21,6 +21,10 @@ export interface IntercomDailySnapshot {
   totalResponseTime: number;
   /** Number of conversations that had a first response (denominator for weighted avg). */
   responseCount: number;
+  /** Sum of all CX Score ratings (1-5) for conversations that have a rating. */
+  cxScoreTotal: number;
+  /** Number of conversations that received a CX Score rating. */
+  cxScoreCount: number;
 }
 
 interface IntercomConversation {
@@ -39,6 +43,11 @@ interface IntercomConversation {
       email?: string | null;
     };
   };
+  conversation_rating?: {
+    rating: number;
+    remark?: string;
+    created_at: number;
+  } | null;
 }
 
 interface IntercomSearchResponse {
@@ -100,6 +109,8 @@ function ensureSnapshot(map: Map<string, IntercomDailySnapshot>, domain: string)
       responseCount: 0,
       quickResolutions: 0,
       aiHandled: 0,
+      cxScoreTotal: 0,
+      cxScoreCount: 0,
     });
   }
   return map.get(domain)!;
@@ -188,6 +199,11 @@ function aggregateConversations(
         snap.totalResponseTime += elapsed;
         snap.responseCount++;
       }
+    }
+
+    if (conv.conversation_rating?.rating != null) {
+      snap.cxScoreTotal += conv.conversation_rating.rating;
+      snap.cxScoreCount++;
     }
 
     if (countQuick && conv.state === 'closed' && conv.conversation_parts?.total_count <= 2) {

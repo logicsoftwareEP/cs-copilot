@@ -18,6 +18,8 @@ interface ScoreEntity {
   intercomPenalty: number | null;
   intercomBonus: number | null;
   intercomDetails: string | null;
+  cxScorePenalty: number | null;
+  cxScoreBonus: number | null;
   aliasStatus?: string | null;
 }
 
@@ -39,6 +41,8 @@ function fromEntity(entity: ScoreEntity): ChurnScore {
     intercomPenalty: entity.intercomPenalty ?? null,
     intercomBonus: entity.intercomBonus ?? null,
     intercomDetails: entity.intercomDetails ?? null,
+    cxScorePenalty: entity.cxScorePenalty ?? null,
+    cxScoreBonus: entity.cxScoreBonus ?? null,
     aliasStatus: (entity.aliasStatus as 'valid' | 'not-found' | null) ?? null,
   };
 }
@@ -128,6 +132,8 @@ export class ScoreStore {
       intercomPenalty: score.intercomPenalty,
       intercomBonus: score.intercomBonus,
       intercomDetails: score.intercomDetails,
+      cxScorePenalty: score.cxScorePenalty,
+      cxScoreBonus: score.cxScoreBonus,
       aliasStatus: score.aliasStatus,
     }, 'Replace');
   }

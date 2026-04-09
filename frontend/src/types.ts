@@ -44,6 +44,11 @@ export interface IntercomDetails {
   engagementBonus: number;
   conversationVolume: number;
   totalBonus: number;
+  cxScorePenalty: number;
+  cxScoreBonus: number;
+  netCxScore: number;
+  avgCxScore: number | null;
+  cxScoreCount: number;
 }
 
 export interface ScoreBreakdown {
@@ -57,6 +62,8 @@ export interface ScoreBreakdown {
   intercomPenalty: number | null;
   intercomBonus: number | null;
   intercomDetails: IntercomDetails | null;
+  cxScorePenalty: number | null;
+  cxScoreBonus: number | null;
 }
 
 export interface AccountDetail extends AccountSummary {
@@ -89,10 +96,61 @@ export interface ChurnScore {
   intercomPenalty: number | null;
   intercomBonus: number | null;
   intercomDetails: string | null;
+  cxScorePenalty: number | null;
+  cxScoreBonus: number | null;
   aliasStatus: 'valid' | 'not-found' | null;
 }
 
 export type HealthTier = 'healthy' | 'watch' | 'at-risk' | 'critical';
+
+// ── Diagnostics types ─────────────────────────────────────────────────────
+
+export interface IntercomSnapshotRow {
+  date: string;
+  conversationVolume: number;
+  openCount: number;
+  avgResponseTime: number;
+  quickResolutions: number;
+  aiHandled: number;
+  cxScoreTotal: number;
+  cxScoreCount: number;
+}
+
+export interface IntercomDomainDiag {
+  domain: string;
+  aggregated: {
+    conversationVolume: number;
+    openCount: number;
+    avgResponseTime: number;
+    quickResolutions: number;
+    aiHandled: number;
+    avgCxScore: number | null;
+    cxScoreCount: number;
+  };
+  snapshots: IntercomSnapshotRow[];
+}
+
+export interface IntercomDiagnostics {
+  domains: IntercomDomainDiag[];
+}
+
+export interface ZendeskAccountDiag {
+  accountName: string;
+  domain: string;
+  ticketVolume: number;
+  openCount: number;
+  highPriorityCount: number;
+  urgentCount: number;
+  totalPenalty: number;
+  volumePenalty: number;
+  openPenalty: number;
+  severityPenalty: number;
+}
+
+export interface ZendeskDiagnostics {
+  syncedAt: string | null;
+  accounts: ZendeskAccountDiag[];
+}
 
 export type UserRole = 'admin' | 'supervisor' | 'csm';
 

@@ -274,6 +274,8 @@ async function getAccount(
               intercomPenalty: latestScore.intercomPenalty ?? null,
               intercomBonus: latestScore.intercomBonus ?? null,
               intercomDetails: latestScore.intercomDetails ? JSON.parse(latestScore.intercomDetails as string) : null,
+              cxScorePenalty: latestScore.cxScorePenalty ?? null,
+              cxScoreBonus: latestScore.cxScoreBonus ?? null,
             }
           : null,
         scoreHistory: history,

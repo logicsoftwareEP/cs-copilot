@@ -43,6 +43,8 @@ export interface ChurnScore {
   intercomPenalty: number | null;
   intercomBonus: number | null;
   intercomDetails: string | null;   // JSON string of IntercomPenaltyResult & IntercomBonusResult
+  cxScorePenalty: number | null;
+  cxScoreBonus: number | null;
   aliasStatus: 'valid' | 'not-found' | null;
 }
 

@@ -109,7 +109,7 @@ describe('buildScoreRow', () => {
       signals: sig({ dauWauTrend: 0.15, monthlyActiveUsers: 80, featureBreadth: fb(10) }),
       licenses: 100,
       zendeskData: { ticketVolume: 12, openCount: 7, highPriorityCount: 0, urgentCount: 1 },
-      intercomData: { openCount: 6, conversationVolume: 10, avgResponseTime: 100000, quickResolutions: 2, aiHandled: 1 },
+      intercomData: { openCount: 6, conversationVolume: 10, avgResponseTime: 100000, quickResolutions: 2, aiHandled: 1, avgCxScore: null, cxScoreCount: 0 },
       aliasStatus: 'valid',
     }));
     // Base: 100, zendesk penalty: -8 + -7 + -5 = -20, intercom penalty: -7 + -5 = -12

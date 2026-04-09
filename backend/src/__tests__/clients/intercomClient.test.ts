@@ -328,5 +328,48 @@ describe('intercomClient', () => {
       const result = await fetchIntercomConversations(TOKEN, HOURS_BACK);
       expect(result).toBeNull();
     });
+
+    it('aggregates CX Score ratings from Pass 1 conversations', async () => {
+      const conv1 = {
+        ...makeConvWithEmail({ id: '1', email: 'a@acme.com', state: 'closed' }),
+        conversation_rating: { rating: 5, created_at: 1700000100 },
+      };
+      const conv2 = {
+        ...makeConvWithEmail({ id: '2', email: 'b@acme.com', state: 'closed' }),
+        conversation_rating: { rating: 3, created_at: 1700000200 },
+      };
+      const convNoRating = makeConvWithEmail({ id: '3', email: 'c@acme.com', state: 'closed' });
+
+      // Pass 1: conversations with and without ratings
+      mockFetch.mockResolvedValueOnce(searchPage([conv1, conv2, convNoRating]));
+      // Pass 2: no open conversations
+      mockFetch.mockResolvedValueOnce(searchPage([]));
+
+      const result = await fetchIntercomConversations(TOKEN, HOURS_BACK);
+
+      expect(result).not.toBeNull();
+      const acme = result!.get('acme.com')!;
+      expect(acme.cxScoreTotal).toBe(8); // 5 + 3
+      expect(acme.cxScoreCount).toBe(2); // only 2 had ratings
+    });
+
+    it('does not aggregate CX Score ratings from Pass 2 (open) conversations', async () => {
+      const openWithRating = {
+        ...makeConvWithEmail({ id: '1', email: 'a@acme.com', state: 'open' }),
+        conversation_rating: { rating: 5, created_at: 1700000100 },
+      };
+
+      // Pass 1: empty
+      mockFetch.mockResolvedValueOnce(searchPage([]));
+      // Pass 2: open conversation with rating (should be skipped by continue)
+      mockFetch.mockResolvedValueOnce(searchPage([openWithRating]));
+
+      const result = await fetchIntercomConversations(TOKEN, HOURS_BACK);
+
+      expect(result).not.toBeNull();
+      const acme = result!.get('acme.com')!;
+      expect(acme.cxScoreTotal).toBe(0);
+      expect(acme.cxScoreCount).toBe(0);
+    });
   });
 });

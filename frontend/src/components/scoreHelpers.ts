@@ -83,6 +83,26 @@ export function intercomBonusInfo(details: IntercomDetails | null): { pts: strin
   };
 }
 
+export function cxScoreInfo(details: IntercomDetails | null): { pts: string; label: string; detail: string; hint: string | null } {
+  if (!details || details.avgCxScore === null) {
+    return { pts: 'N/A', label: 'No data', detail: 'No CX Score ratings available', hint: null };
+  }
+  if (details.cxScoreCount < 3) {
+    return { pts: 'N/A', label: 'Insufficient data', detail: `Only ${details.cxScoreCount} rated conversation(s) — need 3+`, hint: null };
+  }
+
+  const net = details.netCxScore;
+  const avg = details.avgCxScore.toFixed(1);
+
+  if (net === 0) {
+    return { pts: '0', label: `Avg ${avg}/5`, detail: `${details.cxScoreCount} conversations rated`, hint: 'Neutral — CX Score in the mid range.' };
+  }
+  if (net > 0) {
+    return { pts: `+${net}`, label: `Avg ${avg}/5`, detail: `${details.cxScoreCount} conversations rated`, hint: net >= 3 ? 'Excellent AI-assessed satisfaction.' : 'Good AI-assessed satisfaction.' };
+  }
+  return { pts: String(net), label: `Avg ${avg}/5`, detail: `${details.cxScoreCount} conversations rated`, hint: net <= -5 ? 'Poor AI-assessed satisfaction — review conversations.' : 'Below-average satisfaction. Monitor closely.' };
+}
+
 // ─── Utility helpers ──────────────────────────────────────────────────────────
 
 export function formatArr(arr: number | null | undefined): string {

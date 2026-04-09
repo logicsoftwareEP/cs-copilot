@@ -297,6 +297,57 @@ export function computeIntercomBonus(data: IntercomAggregated): IntercomBonusRes
   };
 }
 
+// ── CX Score penalty/bonus ──────────────────────────────────────────────────
+
+export interface CxScoreResult {
+  cxScorePenalty: number;
+  cxScoreBonus: number;
+  netCxScore: number;
+  avgCxScore: number | null;
+  cxScoreCount: number;
+}
+
+/**
+ * Compute a CX Score penalty/bonus from aggregated Intercom conversation rating data.
+ *
+ * Minimum 3 rated conversations to activate (else all zeros).
+ * Penalty: avg < 2.0 → -8, < 2.5 → -5, < 3.0 → -3, else 0
+ * Bonus: avg >= 4.5 → +5, >= 4.0 → +3, >= 3.5 → +1, else 0
+ * netCxScore = penalty + bonus
+ */
+export function computeCxScorePenaltyBonus(data: IntercomAggregated): CxScoreResult {
+  const { avgCxScore, cxScoreCount } = data;
+
+  // Minimum 3 rated conversations to activate
+  if (avgCxScore == null || cxScoreCount < 3) {
+    return { cxScorePenalty: 0, cxScoreBonus: 0, netCxScore: 0, avgCxScore, cxScoreCount };
+  }
+
+  // ── Penalty ───────────────────────────────────────────────────────────
+  let cxScorePenalty = 0;
+  if (avgCxScore < 2.0) {
+    cxScorePenalty = -8;
+  } else if (avgCxScore < 2.5) {
+    cxScorePenalty = -5;
+  } else if (avgCxScore < 3.0) {
+    cxScorePenalty = -3;
+  }
+
+  // ── Bonus ─────────────────────────────────────────────────────────────
+  let cxScoreBonus = 0;
+  if (avgCxScore >= 4.5) {
+    cxScoreBonus = 5;
+  } else if (avgCxScore >= 4.0) {
+    cxScoreBonus = 3;
+  } else if (avgCxScore >= 3.5) {
+    cxScoreBonus = 1;
+  }
+
+  const netCxScore = cxScorePenalty + cxScoreBonus;
+
+  return { cxScorePenalty, cxScoreBonus, netCxScore, avgCxScore, cxScoreCount };
+}
+
 // ── Score row builder ───────────────────────────────────────────────────────
 
 export interface ScoreRowInput {
@@ -329,6 +380,7 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
     const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
     const icPenalty = intercomData ? computeIntercomPenalty(intercomData) : null;
     const icBonus = intercomData ? computeIntercomBonus(intercomData) : null;
+    const cxResult = intercomData ? computeCxScorePenaltyBonus(intercomData) : null;
     return {
       accountId, date, score: null, tier: 'unmapped',
       dauWauTrend: null, monthlyActiveUsers: null, licenseUtilization: null,
@@ -337,7 +389,9 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
       zendeskDetails: penalty ? JSON.stringify(penalty) : null,
       intercomPenalty: icPenalty ? icPenalty.totalPenalty : null,
       intercomBonus: icBonus ? icBonus.totalBonus : null,
-      intercomDetails: intercomData ? JSON.stringify({ ...icPenalty, ...icBonus, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
+      intercomDetails: intercomData ? JSON.stringify({ ...icPenalty, ...icBonus, ...cxResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
+      cxScorePenalty: cxResult ? cxResult.cxScorePenalty : null,
+      cxScoreBonus: cxResult ? cxResult.cxScoreBonus : null,
       aliasStatus,
     };
   }
@@ -348,6 +402,7 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
   const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
   const intercomPenaltyResult = intercomData ? computeIntercomPenalty(intercomData) : null;
   const intercomBonusResult = intercomData ? computeIntercomBonus(intercomData) : null;
+  const cxResult = intercomData ? computeCxScorePenaltyBonus(intercomData) : null;
 
   let featureDetailsJson: string | null = null;
   if (signals.featureBreadth) {
@@ -376,7 +431,9 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
     zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
     intercomPenalty: intercomPenaltyResult ? intercomPenaltyResult.totalPenalty : null,
     intercomBonus: intercomBonusResult ? intercomBonusResult.totalBonus : null,
-    intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyResult, ...intercomBonusResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
+    intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyResult, ...intercomBonusResult, ...cxResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
+    cxScorePenalty: adjusted.cxScorePenalty,
+    cxScoreBonus: adjusted.cxScoreBonus,
     aliasStatus,
   };
 }
@@ -395,10 +452,13 @@ export function applyAllPenalties(
   baseResult: HealthScoreResult,
   zendeskData: ZendeskTicketData | null,
   intercomData: IntercomAggregated | null,
-): HealthScoreResult & { zendeskPenalty: number | null; intercomPenalty: number | null; intercomBonus: number | null } {
+): HealthScoreResult & { zendeskPenalty: number | null; intercomPenalty: number | null; intercomBonus: number | null; cxScorePenalty: number | null; cxScoreBonus: number | null } {
   const zdPenalty = zendeskData !== null ? computeZendeskPenalty(zendeskData).totalPenalty : null;
   const icPenalty = intercomData !== null ? computeIntercomPenalty(intercomData).totalPenalty : null;
   const icBonus = intercomData !== null ? computeIntercomBonus(intercomData).totalBonus : null;
+  const cxResult = intercomData !== null ? computeCxScorePenaltyBonus(intercomData) : null;
+  const cxPenalty = cxResult ? cxResult.cxScorePenalty : null;
+  const cxBonus = cxResult ? cxResult.cxScoreBonus : null;
 
   // If base score is null (unmapped), attach penalties but don't adjust score
   if (baseResult.score === null) {
@@ -407,16 +467,18 @@ export function applyAllPenalties(
       zendeskPenalty: zdPenalty,
       intercomPenalty: icPenalty,
       intercomBonus: icBonus,
+      cxScorePenalty: cxPenalty,
+      cxScoreBonus: cxBonus,
     };
   }
 
   // Combined penalty capped at -20
-  const rawCombinedPenalty = (zdPenalty ?? 0) + (icPenalty ?? 0);
+  const rawCombinedPenalty = (zdPenalty ?? 0) + (icPenalty ?? 0) + (cxPenalty ?? 0);
   const combinedPenalty = Math.max(rawCombinedPenalty, -20);
 
   // Apply penalty then bonus, clamp final score to 0-110
   const afterPenalty = baseResult.score + combinedPenalty;
-  const afterBonus = afterPenalty + (icBonus ?? 0);
+  const afterBonus = afterPenalty + (icBonus ?? 0) + (cxBonus ?? 0);
   const finalScore = Math.min(110, Math.max(0, afterBonus));
 
   const tier = scoreToTier(finalScore);
@@ -428,5 +490,7 @@ export function applyAllPenalties(
     zendeskPenalty: zdPenalty,
     intercomPenalty: icPenalty,
     intercomBonus: icBonus,
+    cxScorePenalty: cxPenalty,
+    cxScoreBonus: cxBonus,
   };
 }

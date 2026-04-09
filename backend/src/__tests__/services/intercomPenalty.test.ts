@@ -1,9 +1,11 @@
 import {
   computeIntercomPenalty,
   computeIntercomBonus,
+  computeCxScorePenaltyBonus,
   applyAllPenalties,
   IntercomPenaltyResult,
   IntercomBonusResult,
+  CxScoreResult,
   HealthScoreResult,
 } from '../../services/healthScoreService';
 import { IntercomAggregated } from '../../services/intercomStore';
@@ -17,6 +19,8 @@ function ic(overrides: Partial<IntercomAggregated> = {}): IntercomAggregated {
     avgResponseTime: 0,
     quickResolutions: 0,
     aiHandled: 0,
+    avgCxScore: null,
+    cxScoreCount: 0,
     ...overrides,
   };
 }
@@ -391,5 +395,158 @@ describe('applyAllPenalties', () => {
     );
     expect(result.score).toBe(25);
     expect(result.tier).toBe('critical');
+  });
+});
+
+// ── computeCxScorePenaltyBonus ──────────────────────────────────────────────
+
+describe('computeCxScorePenaltyBonus', () => {
+
+  // ── Minimum threshold: < 3 rated conversations → all zeros ────────────
+
+  it('returns all zeros when cxScoreCount < 3', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 1.0, cxScoreCount: 2 }));
+    expect(result.cxScorePenalty).toBe(0);
+    expect(result.cxScoreBonus).toBe(0);
+    expect(result.netCxScore).toBe(0);
+  });
+
+  it('returns all zeros when avgCxScore is null', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: null, cxScoreCount: 0 }));
+    expect(result.cxScorePenalty).toBe(0);
+    expect(result.cxScoreBonus).toBe(0);
+    expect(result.netCxScore).toBe(0);
+  });
+
+  // ── Penalty thresholds ────────────────────────────────────────────────
+
+  it('avg < 2.0 → -8 penalty', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 1.5, cxScoreCount: 5 }));
+    expect(result.cxScorePenalty).toBe(-8);
+  });
+
+  it('avg = 2.0 → -5 penalty (not -8, boundary)', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 2.0, cxScoreCount: 5 }));
+    expect(result.cxScorePenalty).toBe(-5);
+  });
+
+  it('avg < 2.5 → -5 penalty', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 2.3, cxScoreCount: 5 }));
+    expect(result.cxScorePenalty).toBe(-5);
+  });
+
+  it('avg = 2.5 → -3 penalty (not -5, boundary)', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 2.5, cxScoreCount: 5 }));
+    expect(result.cxScorePenalty).toBe(-3);
+  });
+
+  it('avg < 3.0 → -3 penalty', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 2.9, cxScoreCount: 5 }));
+    expect(result.cxScorePenalty).toBe(-3);
+  });
+
+  it('avg = 3.0 → 0 penalty', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 3.0, cxScoreCount: 5 }));
+    expect(result.cxScorePenalty).toBe(0);
+  });
+
+  // ── Bonus thresholds ──────────────────────────────────────────────────
+
+  it('avg >= 4.5 → +5 bonus', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 4.5, cxScoreCount: 5 }));
+    expect(result.cxScoreBonus).toBe(5);
+  });
+
+  it('avg = 5.0 → +5 bonus', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 5.0, cxScoreCount: 5 }));
+    expect(result.cxScoreBonus).toBe(5);
+  });
+
+  it('avg >= 4.0 but < 4.5 → +3 bonus', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 4.2, cxScoreCount: 5 }));
+    expect(result.cxScoreBonus).toBe(3);
+  });
+
+  it('avg >= 3.5 but < 4.0 → +1 bonus', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 3.7, cxScoreCount: 5 }));
+    expect(result.cxScoreBonus).toBe(1);
+  });
+
+  it('avg = 3.0 → 0 bonus', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 3.0, cxScoreCount: 5 }));
+    expect(result.cxScoreBonus).toBe(0);
+  });
+
+  // ── Net score ─────────────────────────────────────────────────────────
+
+  it('netCxScore = penalty + bonus', () => {
+    // avg 1.5 → penalty -8, bonus 0; net = -8
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 1.5, cxScoreCount: 5 }));
+    expect(result.netCxScore).toBe(-8);
+  });
+
+  it('passes through avgCxScore and cxScoreCount', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 4.5, cxScoreCount: 10 }));
+    expect(result.avgCxScore).toBe(4.5);
+    expect(result.cxScoreCount).toBe(10);
+  });
+
+  // ── Boundary: exactly 3 rated conversations activates scoring ─────────
+
+  it('cxScoreCount = 3 activates scoring', () => {
+    const result = computeCxScorePenaltyBonus(ic({ avgCxScore: 1.5, cxScoreCount: 3 }));
+    expect(result.cxScorePenalty).toBe(-8);
+  });
+});
+
+// ── applyAllPenalties with CX Score ─────────────────────────────────────────
+
+describe('applyAllPenalties with CX Score', () => {
+
+  it('includes CX penalty in combined penalty cap', () => {
+    // zendesk: volume 11 → -8, open 6 → -7, urgent → -5 = -20
+    // intercom: open 6 → -7, slow → -5 = -12
+    // CX: avg 1.5, count 5 → penalty -8
+    // raw combined = -20 + -12 + -8 = -40, capped to -20
+    const base = baseResult({ score: 80, tier: 'healthy' });
+    const result = applyAllPenalties(
+      base,
+      zd({ ticketVolume: 11, openCount: 6, urgentCount: 1 }),
+      ic({ openCount: 6, avgResponseTime: 90000, conversationVolume: 5, avgCxScore: 1.5, cxScoreCount: 5 }),
+    );
+    expect(result.score).toBe(60); // 80 + (-20) = 60 (capped, no bonus)
+    expect(result.cxScorePenalty).toBe(-8);
+    expect(result.cxScoreBonus).toBe(0);
+  });
+
+  it('includes CX bonus after penalty', () => {
+    // No zendesk, no intercom penalty; CX avg 4.5, count 5 → bonus +5
+    const base = baseResult({ score: 80, tier: 'healthy' });
+    const result = applyAllPenalties(
+      base,
+      null,
+      ic({ avgCxScore: 4.5, cxScoreCount: 5 }),
+    );
+    expect(result.cxScoreBonus).toBe(5);
+    expect(result.score).toBe(85); // 80 + 0 + 0 + 5 = 85
+  });
+
+  it('CX penalty and bonus both null when no intercom data', () => {
+    const base = baseResult({ score: 80, tier: 'healthy' });
+    const result = applyAllPenalties(base, null, null);
+    expect(result.cxScorePenalty).toBeNull();
+    expect(result.cxScoreBonus).toBeNull();
+  });
+
+  it('CX score inactive (< 3 ratings) does not affect score', () => {
+    const base = baseResult({ score: 80, tier: 'healthy' });
+    const result = applyAllPenalties(
+      base,
+      null,
+      ic({ avgCxScore: 1.0, cxScoreCount: 2 }),
+    );
+    expect(result.cxScorePenalty).toBe(0);
+    expect(result.cxScoreBonus).toBe(0);
+    expect(result.score).toBe(80);
   });
 });
