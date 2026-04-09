@@ -2,39 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getDiagnosticsIntercom, getDiagnosticsZendesk } from '../services/api';
 import { IntercomDiagnostics, IntercomDomainDiag, ZendeskDiagnostics, ZendeskAccountDiag } from '../types';
-
-// ── Formatting helpers ───────────────────────────────────────────────────────
-
-function fmtSeconds(s: number | null | undefined): string {
-  if (s === null || s === undefined || s === 0) return '-';
-  if (s < 60) return `${Math.round(s)}s`;
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  return `${(s / 3600).toFixed(1)}h`;
-}
-
-function fmtNum(v: number | null | undefined, decimals = 1): string {
-  if (v === null || v === undefined) return '-';
-  return Number.isInteger(v) ? String(v) : v.toFixed(decimals);
-}
+import { fmtSeconds, fmtNum } from '../components/scoreHelpers';
 
 // ── Intercom Tab ─────────────────────────────────────────────────────────────
 
-function IntercomTab() {
-  const [data, setData] = useState<IntercomDiagnostics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function IntercomTab({ data }: { data: IntercomDiagnostics }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    getDiagnosticsIntercom()
-      .then(setData)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <p className="text-obs-dim text-[14px] py-8 text-center">Loading Intercom data...</p>;
-  if (error) return <p className="text-tier-critical text-[14px] py-4">Error: {error}</p>;
-  if (!data || data.domains.length === 0) return <p className="text-obs-ghost text-[14px] py-8 text-center">No Intercom data available.</p>;
+  if (data.domains.length === 0) return <p className="text-obs-ghost text-[14px] py-8 text-center">No Intercom data available.</p>;
 
   const sorted = [...data.domains].sort((a, b) => b.aggregated.conversationVolume - a.aggregated.conversationVolume);
 
@@ -134,21 +109,8 @@ function IntercomDomainRow({ domain: d, isExpanded, onToggle }: { domain: Interc
 
 // ── Zendesk Tab ──────────────────────────────────────────────────────────────
 
-function ZendeskTab() {
-  const [data, setData] = useState<ZendeskDiagnostics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getDiagnosticsZendesk()
-      .then(setData)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <p className="text-obs-dim text-[14px] py-8 text-center">Loading Zendesk data...</p>;
-  if (error) return <p className="text-tier-critical text-[14px] py-4">Error: {error}</p>;
-  if (!data || data.accounts.length === 0) return <p className="text-obs-ghost text-[14px] py-8 text-center">No Zendesk data available.</p>;
+function ZendeskTab({ data }: { data: ZendeskDiagnostics }) {
+  if (data.accounts.length === 0) return <p className="text-obs-ghost text-[14px] py-8 text-center">No Zendesk data available.</p>;
 
   return (
     <div>
@@ -205,10 +167,20 @@ function ZendeskAccountRow({ account: a }: { account: ZendeskAccountDiag }) {
 
 export default function Diagnostics() {
   const [tab, setTab] = useState<'intercom' | 'zendesk'>('intercom');
+  const [icData, setIcData] = useState<IntercomDiagnostics | null>(null);
+  const [zdData, setZdData] = useState<ZendeskDiagnostics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([getDiagnosticsIntercom(), getDiagnosticsZendesk()])
+      .then(([ic, zd]) => { setIcData(ic); setZdData(zd); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <div className="min-h-screen bg-obs-bg text-obs-text">
-      {/* Header */}
       <header className="border-b border-obs-edge bg-obs-surface px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link to="/" className="text-obs-ghost hover:text-obs-text text-[14px]">← Portfolio</Link>
@@ -219,7 +191,6 @@ export default function Diagnostics() {
       </header>
 
       <div className="max-w-[1440px] mx-auto px-6 py-6">
-        {/* Tab buttons */}
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setTab('intercom')}
@@ -243,8 +214,10 @@ export default function Diagnostics() {
           </button>
         </div>
 
-        {/* Tab content */}
-        {tab === 'intercom' ? <IntercomTab /> : <ZendeskTab />}
+        {loading && <p className="text-obs-dim text-[14px] py-8 text-center">Loading diagnostics data...</p>}
+        {error && <p className="text-tier-critical text-[14px] py-4">Error: {error}</p>}
+        {!loading && !error && tab === 'intercom' && icData && <IntercomTab data={icData} />}
+        {!loading && !error && tab === 'zendesk' && zdData && <ZendeskTab data={zdData} />}
       </div>
     </div>
   );

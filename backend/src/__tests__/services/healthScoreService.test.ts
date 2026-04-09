@@ -1,4 +1,4 @@
-import { computeScore } from '../../services/healthScoreService';
+import { computeScore, applyAllPenalties, HealthScoreResult } from '../../services/healthScoreService';
 import { AmplitudeSignals, FeatureBreadth } from '../../clients/amplitudeClient';
 
 // Helper: build signals with defaults
@@ -304,6 +304,53 @@ describe('healthScoreService', () => {
       );
       expect(r.score).toBe(6);
       expect(r.tier).toBe('critical');
+    });
+  });
+
+  describe('applyAllPenalties', () => {
+    const baseResult: HealthScoreResult = {
+      score: 80,
+      tier: 'healthy',
+      licenseUtilization: 0.8,
+      monthlyActiveUsers: 80,
+      featuresUsed: 10,
+      featureDetails: null,
+    };
+
+    it('returns full detail objects alongside penalty totals', () => {
+      const adjusted = applyAllPenalties(
+        baseResult,
+        { ticketVolume: 5, openCount: 3, highPriorityCount: 0, urgentCount: 0 },
+        { openCount: 2, conversationVolume: 5, avgResponseTime: 1000, quickResolutions: 3, aiHandled: 1, avgCxScore: 4.5, cxScoreCount: 5 },
+      );
+      // Penalty totals
+      expect(adjusted.zendeskPenalty).toBe(-7); // vol -3 + open -4
+      expect(adjusted.intercomPenalty).toBe(-2); // open 1-2 = -2
+      expect(adjusted.intercomBonus).toBe(3); // quick 2 + ai 1 (no engage: openCount > 1)
+      expect(adjusted.cxScorePenalty).toBe(0);
+      expect(adjusted.cxScoreBonus).toBe(5);
+
+      // Detail objects
+      expect(adjusted.zendeskDetails).not.toBeNull();
+      expect(adjusted.zendeskDetails!.volumePenalty).toBe(-3);
+      expect(adjusted.zendeskDetails!.openPenalty).toBe(-4);
+
+      expect(adjusted.intercomPenaltyDetails).not.toBeNull();
+      expect(adjusted.intercomPenaltyDetails!.openPenalty).toBe(-2);
+
+      expect(adjusted.intercomBonusDetails).not.toBeNull();
+      expect(adjusted.intercomBonusDetails!.quickResolutionBonus).toBe(2);
+
+      expect(adjusted.cxScoreDetails).not.toBeNull();
+      expect(adjusted.cxScoreDetails!.cxScoreBonus).toBe(5);
+    });
+
+    it('returns null details when data sources are null', () => {
+      const adjusted = applyAllPenalties(baseResult, null, null);
+      expect(adjusted.zendeskDetails).toBeNull();
+      expect(adjusted.intercomPenaltyDetails).toBeNull();
+      expect(adjusted.intercomBonusDetails).toBeNull();
+      expect(adjusted.cxScoreDetails).toBeNull();
     });
   });
 });

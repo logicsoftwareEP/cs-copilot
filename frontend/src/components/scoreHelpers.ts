@@ -103,6 +103,20 @@ export function cxScoreInfo(details: IntercomDetails | null): { pts: string; lab
   return { pts: String(net), label: `Avg ${avg}/5`, detail: `${details.cxScoreCount} conversations rated`, hint: net <= -5 ? 'Poor AI-assessed satisfaction — review conversations.' : 'Below-average satisfaction. Monitor closely.' };
 }
 
+// ─── Formatting helpers ──────────────────────────────────────────────────────
+
+export function fmtSeconds(s: number | null | undefined): string {
+  if (s === null || s === undefined || s === 0) return '—';
+  if (s < 60) return `${Math.round(s)}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${(s / 3600).toFixed(1)}h`;
+}
+
+export function fmtNum(v: number | null | undefined, decimals = 1): string {
+  if (v === null || v === undefined) return '—';
+  return Number.isInteger(v) ? String(v) : v.toFixed(decimals);
+}
+
 // ─── Utility helpers ──────────────────────────────────────────────────────────
 
 export function formatArr(arr: number | null | undefined): string {

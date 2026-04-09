@@ -9,6 +9,7 @@ import { fetchAllZendeskTickets } from '../clients/zendeskClient';
 import { buildScoreRow } from '../services/healthScoreService';
 import { IntercomStore, IntercomAggregated } from '../services/intercomStore';
 import { withAuth, corsHeaders } from '../middleware';
+import { todayISO } from '../utils/dateUtils';
 
 function makeStores() {
   const config = getConfig();
@@ -17,10 +18,6 @@ function makeStores() {
     scores: new ScoreStore(config.storageConnectionString, config.tableScores),
     mappings: new MappingStore(config.storageConnectionString, config.tableMapping),
   };
-}
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 async function listAccounts(

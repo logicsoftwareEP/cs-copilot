@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dauWauInfo, licenseInfo, formatArr, renewalInfo, cxScoreInfo } from '../../components/scoreHelpers';
+import { dauWauInfo, licenseInfo, formatArr, renewalInfo, cxScoreInfo, fmtSeconds, fmtNum } from '../../components/scoreHelpers';
 import { IntercomDetails } from '../../types';
 
 describe('dauWauInfo', () => {
@@ -136,6 +136,54 @@ describe('renewalInfo', () => {
     const far = new Date(Date.now() + 86_400_000 * 200).toISOString();
     const result = renewalInfo(far);
     expect(result.urgency).toBe('ok');
+  });
+});
+
+describe('fmtSeconds', () => {
+  it('returns em-dash for null', () => {
+    expect(fmtSeconds(null)).toBe('—');
+  });
+
+  it('returns em-dash for undefined', () => {
+    expect(fmtSeconds(undefined)).toBe('—');
+  });
+
+  it('returns em-dash for zero', () => {
+    expect(fmtSeconds(0)).toBe('—');
+  });
+
+  it('formats seconds', () => {
+    expect(fmtSeconds(45)).toBe('45s');
+  });
+
+  it('formats minutes', () => {
+    expect(fmtSeconds(120)).toBe('2m');
+  });
+
+  it('formats hours', () => {
+    expect(fmtSeconds(7200)).toBe('2.0h');
+  });
+});
+
+describe('fmtNum', () => {
+  it('returns em-dash for null', () => {
+    expect(fmtNum(null)).toBe('—');
+  });
+
+  it('returns em-dash for undefined', () => {
+    expect(fmtNum(undefined)).toBe('—');
+  });
+
+  it('returns integer as string', () => {
+    expect(fmtNum(42)).toBe('42');
+  });
+
+  it('formats decimal with default precision', () => {
+    expect(fmtNum(3.14159)).toBe('3.1');
+  });
+
+  it('formats decimal with custom precision', () => {
+    expect(fmtNum(3.14159, 2)).toBe('3.14');
   });
 });
 

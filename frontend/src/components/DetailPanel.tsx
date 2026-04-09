@@ -40,6 +40,7 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
   const zd        = zendeskPenaltyInfo(bd?.zendeskPenalty ?? null);
   const icPenalty = intercomPenaltyInfo(bd?.intercomDetails ?? null);
   const icBonus   = intercomBonusInfo(bd?.intercomDetails ?? null);
+  const cx        = cxScoreInfo(bd?.intercomDetails ?? null);
   const hasLicenses = summary.licenses !== null;
   const intercomBonus = bd?.intercomBonus ?? 0;
   const scoreOver100 = summary.score !== null && summary.score > 100 ? summary.score - 100 : 0;
@@ -269,33 +270,30 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
                   )}
 
                   {/* Intercom CX Score card */}
-                  {bd && (() => {
-                    const cx = cxScoreInfo(bd?.intercomDetails ?? null);
-                    return (
-                      <div className="bg-obs-card rounded-lg px-4 py-3 border border-obs-edge">
-                        <div className="flex items-baseline justify-between">
-                          <div>
-                            <p className="text-[14px] font-semibold text-obs-bright">Intercom CX Score</p>
-                            <p className="text-[14px] text-obs-ghost mt-0.5">AI-assessed satisfaction rating</p>
-                          </div>
-                          <p className={`text-[16px] font-bold font-mono flex-shrink-0 ml-3 ${
-                            cx.pts === 'N/A' ? 'text-obs-ghost'
-                            : cx.pts === '0' ? 'text-obs-dim'
-                            : cx.pts.startsWith('+') ? 'text-tier-healthy'
-                            : Number(cx.pts) >= -3 ? 'text-tier-watch'
-                            : 'text-tier-critical'
-                          }`}>
-                            {cx.pts}
-                          </p>
+                  {bd && (
+                    <div className="bg-obs-card rounded-lg px-4 py-3 border border-obs-edge">
+                      <div className="flex items-baseline justify-between">
+                        <div>
+                          <p className="text-[14px] font-semibold text-obs-bright">Intercom CX Score</p>
+                          <p className="text-[14px] text-obs-ghost mt-0.5">AI-assessed satisfaction rating</p>
                         </div>
-                        <p className="text-[14px] text-obs-dim mt-2 leading-relaxed">
-                          <span className="font-medium text-obs-text">{cx.label}</span>
-                          {' · '}{cx.detail}
+                        <p className={`text-[16px] font-bold font-mono flex-shrink-0 ml-3 ${
+                          cx.pts === 'N/A' ? 'text-obs-ghost'
+                          : cx.pts === '0' ? 'text-obs-dim'
+                          : cx.pts.startsWith('+') ? 'text-tier-healthy'
+                          : Number(cx.pts) >= -3 ? 'text-tier-watch'
+                          : 'text-tier-critical'
+                        }`}>
+                          {cx.pts}
                         </p>
-                        {cx.hint && <p className="text-[14px] text-obs-ghost mt-0.5 leading-relaxed">{cx.hint}</p>}
                       </div>
-                    );
-                  })()}
+                      <p className="text-[14px] text-obs-dim mt-2 leading-relaxed">
+                        <span className="font-medium text-obs-text">{cx.label}</span>
+                        {' · '}{cx.detail}
+                      </p>
+                      {cx.hint && <p className="text-[14px] text-obs-ghost mt-0.5 leading-relaxed">{cx.hint}</p>}
+                    </div>
+                  )}
 
                   {/* Combined penalty cap note */}
                   {bd?.zendeskPenalty != null && bd?.intercomPenalty != null && (

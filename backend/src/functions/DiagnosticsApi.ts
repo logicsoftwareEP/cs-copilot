@@ -5,10 +5,7 @@ import { AccountStore } from '../services/accountStore';
 import { ScoreStore } from '../services/scoreStore';
 import { withAuth, corsHeaders } from '../middleware';
 import { User } from '../types';
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from '../utils/dateUtils';
 
 export async function handleDiagnostics(
   req: HttpRequest,
@@ -38,9 +35,8 @@ async function handleIntercom(headers: Record<string, string>): Promise<HttpResp
   // Group by domain
   const byDomain = new Map<string, typeof allSnapshots>();
   for (const snap of allSnapshots) {
-    const existing = byDomain.get(snap.domain) ?? [];
-    existing.push(snap);
-    byDomain.set(snap.domain, existing);
+    if (!byDomain.has(snap.domain)) byDomain.set(snap.domain, []);
+    byDomain.get(snap.domain)!.push(snap);
   }
 
   const domains = Array.from(byDomain.entries()).map(([domain, snapshots]) => {

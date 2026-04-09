@@ -2,24 +2,13 @@ import { useEffect, useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getAccounts, getAccountDetail } from '../services/api';
 import { AccountSummary, AccountDetail, ScoreBreakdown, ZendeskDetails, IntercomDetails } from '../types';
+import { fmtSeconds, fmtNum } from '../components/scoreHelpers';
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
-
-function fmtNum(v: number | null | undefined, decimals = 2): string {
-  if (v === null || v === undefined) return '—';
-  return Number.isInteger(v) ? String(v) : v.toFixed(decimals);
-}
 
 function fmtPct(v: number | null | undefined): string {
   if (v === null || v === undefined) return '—';
   return `${Math.round(v * 100)}%`;
-}
-
-function fmtSeconds(s: number | null | undefined): string {
-  if (s === null || s === undefined || s === 0) return '—';
-  if (s < 60) return `${Math.round(s)}s`;
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  return `${(s / 3600).toFixed(1)}h`;
 }
 
 // ── Data row component ───────────────────────────────────────────────────────

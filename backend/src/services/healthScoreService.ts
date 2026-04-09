@@ -377,21 +377,23 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
 
   // Patterns 1, 2, 4: no signals or unmapped
   if (!signals) {
-    const penalty = zendeskData ? computeZendeskPenalty(zendeskData) : null;
-    const icPenalty = intercomData ? computeIntercomPenalty(intercomData) : null;
-    const icBonus = intercomData ? computeIntercomBonus(intercomData) : null;
-    const cxResult = intercomData ? computeCxScorePenaltyBonus(intercomData) : null;
+    const unmappedBase: HealthScoreResult = {
+      score: null, tier: 'unmapped',
+      licenseUtilization: null, monthlyActiveUsers: null,
+      featuresUsed: null, featureDetails: null,
+    };
+    const adjusted = applyAllPenalties(unmappedBase, zendeskData, intercomData);
     return {
       accountId, date, score: null, tier: 'unmapped',
       dauWauTrend: null, monthlyActiveUsers: null, licenseUtilization: null,
       featuresUsed: null, featureDetails: null, scoreDelta: null, computedAt,
-      zendeskPenalty: penalty ? penalty.totalPenalty : null,
-      zendeskDetails: penalty ? JSON.stringify(penalty) : null,
-      intercomPenalty: icPenalty ? icPenalty.totalPenalty : null,
-      intercomBonus: icBonus ? icBonus.totalBonus : null,
-      intercomDetails: intercomData ? JSON.stringify({ ...icPenalty, ...icBonus, ...cxResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
-      cxScorePenalty: cxResult ? cxResult.cxScorePenalty : null,
-      cxScoreBonus: cxResult ? cxResult.cxScoreBonus : null,
+      zendeskPenalty: adjusted.zendeskPenalty,
+      zendeskDetails: adjusted.zendeskDetails ? JSON.stringify(adjusted.zendeskDetails) : null,
+      intercomPenalty: adjusted.intercomPenalty,
+      intercomBonus: adjusted.intercomBonus,
+      intercomDetails: intercomData ? JSON.stringify({ ...adjusted.intercomPenaltyDetails, ...adjusted.intercomBonusDetails, ...adjusted.cxScoreDetails, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
+      cxScorePenalty: adjusted.cxScorePenalty,
+      cxScoreBonus: adjusted.cxScoreBonus,
       aliasStatus,
     };
   }
@@ -399,10 +401,6 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
   // Pattern 3: successful scoring
   const baseResult = computeScore(signals, licenses);
   const adjusted = applyAllPenalties(baseResult, zendeskData, intercomData);
-  const penaltyDetails = zendeskData ? computeZendeskPenalty(zendeskData) : null;
-  const intercomPenaltyResult = intercomData ? computeIntercomPenalty(intercomData) : null;
-  const intercomBonusResult = intercomData ? computeIntercomBonus(intercomData) : null;
-  const cxResult = intercomData ? computeCxScorePenaltyBonus(intercomData) : null;
 
   let featureDetailsJson: string | null = null;
   if (signals.featureBreadth) {
@@ -428,10 +426,10 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
     featureDetails: featureDetailsJson,
     scoreDelta, computedAt,
     zendeskPenalty: adjusted.zendeskPenalty,
-    zendeskDetails: penaltyDetails ? JSON.stringify(penaltyDetails) : null,
-    intercomPenalty: intercomPenaltyResult ? intercomPenaltyResult.totalPenalty : null,
-    intercomBonus: intercomBonusResult ? intercomBonusResult.totalBonus : null,
-    intercomDetails: intercomData ? JSON.stringify({ ...intercomPenaltyResult, ...intercomBonusResult, ...cxResult, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
+    zendeskDetails: adjusted.zendeskDetails ? JSON.stringify(adjusted.zendeskDetails) : null,
+    intercomPenalty: adjusted.intercomPenalty,
+    intercomBonus: adjusted.intercomBonus,
+    intercomDetails: intercomData ? JSON.stringify({ ...adjusted.intercomPenaltyDetails, ...adjusted.intercomBonusDetails, ...adjusted.cxScoreDetails, conversationVolume: intercomData.conversationVolume, quickResolutions: intercomData.quickResolutions, aiHandled: intercomData.aiHandled }) : null,
     cxScorePenalty: adjusted.cxScorePenalty,
     cxScoreBonus: adjusted.cxScoreBonus,
     aliasStatus,
@@ -440,6 +438,18 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
 
 // ── Combined penalty application ─────────────────────────────────────────────
 
+export interface AdjustedScoreResult extends HealthScoreResult {
+  zendeskPenalty: number | null;
+  intercomPenalty: number | null;
+  intercomBonus: number | null;
+  cxScorePenalty: number | null;
+  cxScoreBonus: number | null;
+  zendeskDetails: ZendeskPenaltyResult | null;
+  intercomPenaltyDetails: IntercomPenaltyResult | null;
+  intercomBonusDetails: IntercomBonusResult | null;
+  cxScoreDetails: CxScoreResult | null;
+}
+
 /**
  * Apply all available penalties and bonuses to a base health-score result.
  *
@@ -447,18 +457,32 @@ export function buildScoreRow(input: ScoreRowInput): ChurnScore {
  * then adds the Intercom bonus, and clamps the final score to 0-110.
  * If the base score is null (unmapped account), penalties are attached
  * for informational purposes but the score is not adjusted.
+ *
+ * Returns full detail objects for each penalty/bonus source to avoid
+ * redundant recomputation by callers.
  */
 export function applyAllPenalties(
   baseResult: HealthScoreResult,
   zendeskData: ZendeskTicketData | null,
   intercomData: IntercomAggregated | null,
-): HealthScoreResult & { zendeskPenalty: number | null; intercomPenalty: number | null; intercomBonus: number | null; cxScorePenalty: number | null; cxScoreBonus: number | null } {
-  const zdPenalty = zendeskData !== null ? computeZendeskPenalty(zendeskData).totalPenalty : null;
-  const icPenalty = intercomData !== null ? computeIntercomPenalty(intercomData).totalPenalty : null;
-  const icBonus = intercomData !== null ? computeIntercomBonus(intercomData).totalBonus : null;
+): AdjustedScoreResult {
+  const zdResult = zendeskData !== null ? computeZendeskPenalty(zendeskData) : null;
+  const icPenaltyResult = intercomData !== null ? computeIntercomPenalty(intercomData) : null;
+  const icBonusResult = intercomData !== null ? computeIntercomBonus(intercomData) : null;
   const cxResult = intercomData !== null ? computeCxScorePenaltyBonus(intercomData) : null;
+
+  const zdPenalty = zdResult ? zdResult.totalPenalty : null;
+  const icPenalty = icPenaltyResult ? icPenaltyResult.totalPenalty : null;
+  const icBonus = icBonusResult ? icBonusResult.totalBonus : null;
   const cxPenalty = cxResult ? cxResult.cxScorePenalty : null;
   const cxBonus = cxResult ? cxResult.cxScoreBonus : null;
+
+  const details = {
+    zendeskDetails: zdResult,
+    intercomPenaltyDetails: icPenaltyResult,
+    intercomBonusDetails: icBonusResult,
+    cxScoreDetails: cxResult,
+  };
 
   // If base score is null (unmapped), attach penalties but don't adjust score
   if (baseResult.score === null) {
@@ -469,6 +493,7 @@ export function applyAllPenalties(
       intercomBonus: icBonus,
       cxScorePenalty: cxPenalty,
       cxScoreBonus: cxBonus,
+      ...details,
     };
   }
 
@@ -492,5 +517,6 @@ export function applyAllPenalties(
     intercomBonus: icBonus,
     cxScorePenalty: cxPenalty,
     cxScoreBonus: cxBonus,
+    ...details,
   };
 }
