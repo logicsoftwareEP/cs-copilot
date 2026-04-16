@@ -112,7 +112,7 @@ export default function Portfolio() {
         </nav>
       </header>
 
-      <main className="max-w-[1440px] mx-auto px-6 py-6">
+      <main className="max-w-[1800px] mx-auto px-6 py-6">
 
         {/* ── Metric cards ── */}
         {!d.loading && !d.error && d.activeAccounts.length > 0 && (
@@ -327,6 +327,7 @@ export default function Portfolio() {
                       <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="licenses">Licences</SortTH>
                       <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="arr">ARR</SortTH>
                       <SortTH sortCol={d.sortCol} sortDir={d.sortDir} onSort={d.handleSortClick} col="renewalDate">Renewal</SortTH>
+                      <th className="px-4 py-3 whitespace-nowrap text-left text-[14px] font-semibold uppercase tracking-[0.08em] text-obs-ghost">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -509,6 +510,45 @@ export default function Portfolio() {
                             <span className="text-[14px] font-medium font-mono" style={{ color: RENEWAL_COLOURS[r.urgency] }}>
                               {r.label}
                             </span>
+                          </td>
+
+                          {/* Notes (inline editable by all roles, CSMs can edit own accounts) */}
+                          <td
+                            className="px-4 py-3 max-w-[240px]"
+                            onClick={e => {
+                              e.stopPropagation();
+                              d.setEditingNotes(account.accountId);
+                              d.setNotesInput(account.notes ?? '');
+                            }}
+                          >
+                            {d.editingNotes === account.accountId ? (
+                              <textarea
+                                autoFocus
+                                value={d.notesInput}
+                                onChange={e => d.setNotesInput(e.target.value)}
+                                onBlur={() => d.saveNotes(account.accountId)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    d.saveNotes(account.accountId);
+                                  }
+                                  if (e.key === 'Escape') d.setEditingNotes(null);
+                                }}
+                                maxLength={2000}
+                                rows={3}
+                                placeholder="Add notes..."
+                                className="w-56 text-[14px] px-2 py-1 bg-obs-card border border-obs-accent rounded focus:outline-none text-obs-bright placeholder-obs-ghost resize-none"
+                              />
+                            ) : (
+                              <span
+                                className={`text-[14px] block truncate cursor-text hover:text-obs-accent transition-colors ${
+                                  account.notes ? 'text-obs-text' : 'text-obs-ghost italic'
+                                }`}
+                                title={account.notes || 'Click to add notes'}
+                              >
+                                {account.notes || 'Add note'}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
