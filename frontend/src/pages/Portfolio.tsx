@@ -112,7 +112,7 @@ export default function Portfolio() {
         </nav>
       </header>
 
-      <main className="mx-auto px-6 py-6">
+      <main className="w-[98%] mx-auto py-6">
 
         {/* ── Metric cards ── */}
         {!d.loading && !d.error && d.activeAccounts.length > 0 && (
