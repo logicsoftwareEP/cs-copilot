@@ -112,7 +112,7 @@ export default function Portfolio() {
         </nav>
       </header>
 
-      <main className="max-w-[1800px] mx-auto px-6 py-6">
+      <main className="mx-auto px-6 py-6">
 
         {/* ── Metric cards ── */}
         {!d.loading && !d.error && d.activeAccounts.length > 0 && (
@@ -514,7 +514,7 @@ export default function Portfolio() {
 
                           {/* Notes (inline editable by all roles, CSMs can edit own accounts) */}
                           <td
-                            className="px-4 py-3 max-w-[240px]"
+                            className="px-4 py-3"
                             onClick={e => {
                               e.stopPropagation();
                               d.setEditingNotes(account.accountId);
