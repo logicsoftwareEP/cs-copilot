@@ -146,6 +146,49 @@ export default function Portfolio() {
           </div>
         )}
 
+        {/* ── Score Drops ── */}
+        {!d.loading && !d.error && d.activeAccounts.length > 0 && (() => {
+          const scoreDrops = d.activeAccounts
+            .filter(a => a.scoreDelta !== null && a.scoreDelta !== undefined && a.scoreDelta < 0)
+            .sort((a, b) => (a.scoreDelta!) - (b.scoreDelta!) || (b.arr ?? 0) - (a.arr ?? 0))
+            .slice(0, 10);
+
+          if (scoreDrops.length === 0) return null;
+
+          return (
+            <div className="mb-6">
+              <p className="text-[14px] font-semibold uppercase tracking-[0.12em] text-obs-ghost mb-3">
+                Score Drops
+                <span className="text-obs-dim font-normal ml-2">Accounts that declined since last sync</span>
+              </p>
+              <div className="grid grid-cols-5 gap-3">
+                {scoreDrops.map(a => {
+                  const cfg = TIER_CFG[a.tier ?? 'unmapped'];
+                  return (
+                    <div
+                      key={a.accountId}
+                      onClick={() => d.setSelected(a)}
+                      className="bg-obs-raised border border-obs-edge rounded-xl px-4 py-3 cursor-pointer hover:border-obs-rule transition-colors group"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <TierBadge tier={a.tier ?? 'unmapped'} />
+                        <span className="text-[16px] font-bold font-mono" style={{ color: cfg.color }}>
+                          {a.score ?? '—'}
+                        </span>
+                      </div>
+                      <p className="text-[14px] font-semibold text-obs-bright truncate">{a.accountName}</p>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className="text-[14px] text-obs-dim truncate">{a.csmName || '—'}</span>
+                        <span className="text-[14px] font-mono text-tier-critical">{a.scoreDelta}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Top 10 Needs Review ── */}
         {!d.loading && !d.error && d.activeAccounts.length > 0 && (() => {
           const needsReview = d.activeAccounts
