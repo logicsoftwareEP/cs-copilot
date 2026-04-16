@@ -86,15 +86,39 @@ async function getAccount(
   const headers = corsHeaders();
   const accountId = req.params.id;
 
-    // ── PATCH: update licence count and/or ARR ────────────────────────────────
+    // ── PATCH: update licence count, ARR, hidden flag, and/or notes ──────────
     if (req.method === 'PATCH') {
-      if (user.role !== 'admin' && user.role !== 'supervisor') {
+      const body = await req.json() as {
+        licenses?: number | null;
+        arr?: number;
+        hidden?: boolean;
+        notes?: string;
+      };
+
+      // `notes` is editable by any authenticated role (admin/supervisor/csm).
+      // All other fields require admin or supervisor.
+      const hasPrivilegedFields =
+        body.licenses !== undefined ||
+        body.arr !== undefined ||
+        body.hidden !== undefined;
+
+      if (hasPrivilegedFields && user.role !== 'admin' && user.role !== 'supervisor') {
         return { status: 403, headers, body: 'Requires role: admin or supervisor' };
       }
 
-      const body = await req.json() as { licenses?: number | null; arr?: number; hidden?: boolean };
       const { accounts } = makeStores();
       await accounts.ensureTable();
+
+      // For CSMs, enforce ownership on notes edits (can only edit own accounts).
+      if (user.role === 'csm') {
+        const existing = await accounts.getById(accountId);
+        if (!existing) {
+          return { status: 404, headers, body: 'Account not found.' };
+        }
+        if ((existing.csmEmail ?? '').toLowerCase() !== user.email.toLowerCase()) {
+          return { status: 403, headers, body: 'Access denied.' };
+        }
+      }
 
       if (body.licenses !== undefined) {
         const licenses = body.licenses;
@@ -116,6 +140,16 @@ async function getAccount(
           return { status: 400, headers: headers, body: 'hidden must be a boolean.' };
         }
         await accounts.updateHidden(accountId, body.hidden);
+      }
+
+      if (body.notes !== undefined) {
+        if (typeof body.notes !== 'string') {
+          return { status: 400, headers, body: 'notes must be a string.' };
+        }
+        if (body.notes.length > 2000) {
+          return { status: 400, headers, body: 'notes must be 2000 characters or fewer.' };
+        }
+        await accounts.updateNotes(accountId, body.notes);
       }
 
       return { status: 204, headers: headers };

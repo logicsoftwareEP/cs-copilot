@@ -3,11 +3,6 @@ import { ZendeskTicketData } from '../clients/zendeskClient';
 import { IntercomAggregated } from '../services/intercomStore';
 import { ChurnScore, HealthTier } from '../types';
 
-// Component maximums — used for normalisation
-const LICENSE_MAX = 60;
-const ACTIVITY_MAX = 25;
-const FEATURE_MAX = 15;
-
 function scoreToTier(score: number): HealthTier {
   if (score >= 80) return 'healthy';
   if (score >= 60) return 'watch';
@@ -27,18 +22,15 @@ export interface HealthScoreResult {
 /**
  * Compute health score from Amplitude signals and account license count.
  *
- * Scoring breakdown:
- * - License utilisation (0–60 points) — MAU ÷ licenses; omitted when licenses not set
- * - Activity trend      (0–25 points) — DAU/WAU trend; same bands regardless of licenses
+ * Scoring breakdown (raw points, no normalisation):
+ * - License utilisation (0–60 points) — MAU ÷ licenses; 0 when licenses not set
+ * - Activity trend      (0–25 points) — DAU/WAU trend; `null` trend → 0
  * - Feature adoption    (0–15 points) — ratio of feature categories used in last 30d
  *
- * Normalisation:
- *   maxPossible = licenses !== null ? 100 : 40
- *   finalScore  = Math.round(rawScore / maxPossible × 100)
- *
- * This ensures the score is always expressed as a percentage of available signals.
- * When licenses are not yet entered, the score is normalised out of 40 (max from
- * the two Amplitude signals we can still compute).
+ * Final score is the plain sum of the three components (0–100).
+ * Accounts without a licence count are capped at 40 by construction, which
+ * lands them in at-risk/critical tiers — reflecting that we can't fully score
+ * them until a licence count is entered.
  *
  * Returns score=null and tier='unmapped' only when ALL Amplitude signals are null.
  */
@@ -75,6 +67,8 @@ export function computeScore(
       licenseScore = 30;
     } else if (licenseUtilization >= 0.2) {
       licenseScore = 15;
+    } else if (licenseUtilization >= 0.1) {
+      licenseScore = 5;
     } else {
       licenseScore = 0;
     }
@@ -109,12 +103,9 @@ export function computeScore(
     }
   }
 
-  // ── Normalise ─────────────────────────────────────────────────────────────
-  const rawScore = dauWauScore + licenseScore + featureScore;
-  const maxPossible = licenses !== null
-    ? LICENSE_MAX + ACTIVITY_MAX + FEATURE_MAX
-    : ACTIVITY_MAX + FEATURE_MAX;
-  const score = Math.round((rawScore / maxPossible) * 100);
+  // ── Final score ───────────────────────────────────────────────────────────
+  // Plain sum of component points. No normalisation — the raw sum IS the score.
+  const score = dauWauScore + licenseScore + featureScore;
 
   const tier = scoreToTier(score);
 

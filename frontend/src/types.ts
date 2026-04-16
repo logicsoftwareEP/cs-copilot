@@ -11,6 +11,7 @@ export interface Account {
   licenses: number | null;
   domain: string;
   hidden: boolean;
+  notes: string;
 }
 
 export interface AccountSummary extends Account {

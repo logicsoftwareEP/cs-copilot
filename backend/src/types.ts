@@ -13,6 +13,7 @@ export interface Account {
   licenses: number | null; // total paid licences; null = not yet entered
   domain: string;
   hidden: boolean;
+  notes: string;         // free-form notes, editable by any authenticated user
 }
 
 // Mapping between an account and its Amplitude account alias.

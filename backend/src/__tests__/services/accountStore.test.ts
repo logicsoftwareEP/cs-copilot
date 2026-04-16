@@ -33,6 +33,7 @@ const SAMPLE: Account = {
   licenses: null,
   domain: '',
   hidden: false,
+  notes: '',
 };
 
 describe('AccountStore', () => {

@@ -15,16 +15,17 @@ interface AccountEntity {
   licenses?: number | null;
   domain?: string;
   hidden?: boolean;
+  notes?: string;
 }
 
 /**
  * Map an Account to a Table Storage entity for sync writes.
- * NOTE: `licenses` is intentionally excluded so that Merge mode
- * preserves any manually-entered value already in the table.
+ * NOTE: `licenses` and `notes` are intentionally excluded so that
+ * Merge mode preserves manually-entered values already in the table.
  * `domain` is only written when non-empty to avoid overwriting a
  * manually-corrected value with a blank string.
  */
-function toEntity(account: Account): Omit<AccountEntity, 'licenses'> {
+function toEntity(account: Account): Omit<AccountEntity, 'licenses' | 'notes'> {
   const entity: Record<string, unknown> = {
     partitionKey: 'accounts',
     rowKey: account.accountId,
@@ -40,7 +41,7 @@ function toEntity(account: Account): Omit<AccountEntity, 'licenses'> {
   if (account.arr > 0) entity.arr = account.arr;
   // Only write domain when non-empty to avoid overwriting manual corrections
   if (account.domain) entity.domain = account.domain;
-  return entity as Omit<AccountEntity, 'licenses'>;
+  return entity as Omit<AccountEntity, 'licenses' | 'notes'>;
 }
 
 function fromEntity(entity: AccountEntity): Account {
@@ -57,6 +58,7 @@ function fromEntity(entity: AccountEntity): Account {
     licenses: entity.licenses ?? null,
     domain: entity.domain ?? '',
     hidden: entity.hidden ?? false,
+    notes: entity.notes ?? '',
   };
 }
 
@@ -132,6 +134,17 @@ export class AccountStore {
   async updateHidden(accountId: string, hidden: boolean): Promise<void> {
     await this.client.upsertEntity(
       { partitionKey: 'accounts', rowKey: accountId, hidden },
+      'Merge'
+    );
+  }
+
+  /**
+   * Update the free-form notes for a single account.
+   * Uses Merge mode so only `notes` is written; all other fields are preserved.
+   */
+  async updateNotes(accountId: string, notes: string): Promise<void> {
+    await this.client.upsertEntity(
+      { partitionKey: 'accounts', rowKey: accountId, notes },
       'Merge'
     );
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { getAccounts, triggerSync, getSyncStatus, updateAccountLicenses, updateAccountArr, updateAccountHidden, upsertMapping, deleteMapping } from '../services/api';
+import { getAccounts, triggerSync, getSyncStatus, updateAccountLicenses, updateAccountArr, updateAccountHidden, updateAccountNotes, upsertMapping, deleteMapping } from '../services/api';
 import { AccountSummary } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { SortCol } from '../components/constants';
@@ -43,6 +43,8 @@ export function usePortfolioData() {
   const [aliasInput, setAliasInput]           = useState('');
   const [editingArr, setEditingArr]           = useState<string | null>(null);
   const [arrInput, setArrInput]               = useState('');
+  const [editingNotes, setEditingNotes]       = useState<string | null>(null);
+  const [notesInput, setNotesInput]           = useState('');
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
@@ -144,6 +146,18 @@ export function usePortfolioData() {
       setAccounts(prev => prev.map(a => a.accountId === accountId ? { ...a, arr: value } : a));
     } catch (err) { console.warn('Failed to save ARR:', err); }
     setEditingArr(null);
+  }
+
+  async function saveNotes(accountId: string) {
+    const value = notesInput.slice(0, 2000);
+    try {
+      await updateAccountNotes(accountId, value);
+      setAccounts(prev => prev.map(a => a.accountId === accountId ? { ...a, notes: value } : a));
+    } catch (err) {
+      console.warn('Failed to save notes:', err);
+      alert(err instanceof Error ? err.message : 'Failed to save notes');
+    }
+    setEditingNotes(null);
   }
 
   async function saveAlias(account: AccountSummary) {
@@ -249,6 +263,7 @@ export function usePortfolioData() {
     editingLicenses, setEditingLicenses, licensesInput, setLicensesInput, saveLicenses,
     editingAlias, setEditingAlias, aliasInput, setAliasInput, saveAlias,
     editingArr, setEditingArr, arrInput, setArrInput, saveArr,
+    editingNotes, setEditingNotes, notesInput, setNotesInput, saveNotes,
 
     // Actions
     handleToggleHidden,

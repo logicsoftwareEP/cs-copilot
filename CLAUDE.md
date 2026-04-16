@@ -144,6 +144,15 @@ SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only cr
 - **Base64 / Basic Auth on Windows**: do NOT use `echo -n "key:secret" | base64` in bash — Windows Git Bash can silently include a trailing CR. Use Python instead.
 - **`func` CLI v4.7+** crashes with Node.js 24 ("Value cannot be null"). Use `azure-functions-core-tools@4.0.6610`.
 
+## Deploy Notes
+
+`backend/scripts/deploy.sh` sequence: `tsc` → `npm install --omit=dev` → zip → `az functionapp deployment source config-zip` → `npm install` (restore dev deps).
+
+- **Python on Windows**: the script uses `python` (via `command -v python || command -v python3`) to build `deploy.zip`. Do **not** hardcode `python3` — on Windows Git Bash it resolves to the Microsoft Store alias, prints "Python was not found", and exits without creating the zip. Real Python is at `/c/Python314/python`; `py` launcher also works.
+- **If deploy fails mid-run**, dev deps may have already been stripped by `npm install --omit=dev`. Run `cd backend && npm install` to restore TypeScript etc. before retrying, otherwise `npx tsc` will fail.
+- **Deploy command:** `bash backend/scripts/deploy.sh` (run from the repo root or backend/).
+- **Trigger manual sync after deploy:** `curl -X POST "https://cs-copilot-func.azurewebsites.net/api/sync?code=<FUNCTION_KEY>" -H "X-User-Email: vadim@logicsoftware.net"` — returns 202 immediately, sync runs in background (~5 min for 268 accounts). Get the key via `az functionapp keys list --name cs-copilot-func --resource-group customersuccess`.
+
 Full spec: `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 Auth spec: `docs/superpowers/specs/2026-03-17-auth-and-user-management-design.md`
 ClientId migration spec: (removed — file does not exist)

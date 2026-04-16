@@ -156,6 +156,7 @@ export async function fetchAccountsFromSql(
       licenses: null, // handled separately via licences map
       domain,
       hidden: false,
+      notes: '', // preserved by Merge mode; never written from sync
     });
 
     if (row.Alias) {

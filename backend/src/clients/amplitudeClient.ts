@@ -115,6 +115,13 @@ async function fetchMauTrend(
   const currentMAU = await fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty);
   const priorMAU = await fetchMonthlyActiveUsers(apiKey, secretKey, accountAlias, accountProperty, 60, 31);
 
+  // 0 → N ramp: prior period empty but current has users. Treat as max positive
+  // trend so the scorer rewards new/ramping accounts instead of penalizing them
+  // via the divide-by-zero null-trend path.
+  if (priorMAU === 0 && currentMAU !== null && currentMAU > 0) {
+    return { trend: 1.0, currentMAU };
+  }
+
   if (currentMAU === null || priorMAU === null || priorMAU === 0) {
     return { trend: null, currentMAU };
   }

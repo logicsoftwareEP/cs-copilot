@@ -68,6 +68,7 @@ const COMPANY_A: Account = {
   licenses: null,
   domain: '',
   hidden: false,
+  notes: '',
 };
 
 const COMPANY_B: Account = {
@@ -83,6 +84,7 @@ const COMPANY_B: Account = {
   licenses: null,
   domain: '',
   hidden: false,
+  notes: '',
 };
 
 // GOOD_SIGNALS: dauWauTrend ≥0.1 (25pts) + monthlyActiveUsers (unused, licenses null) + featureAdoption ≥75% (15pts)
@@ -275,11 +277,11 @@ describe('runSync', () => {
     expect(result.errors[0]).toContain('HubSpot 503');
   });
 
-  it('score delta calculation: yesterday score=70, today score uses licenses=null → score=100, delta=30', async () => {
+  it('score delta calculation: yesterday score=10, today score uses licenses=null → score=40, delta=30', async () => {
     const yesterdayISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
     const yesterdayScoreMap = new Map<string, any>([
-      ['a1b2c3d4-e5f6-7890-abcd-ef1234567890', { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', date: yesterdayISO, score: 70, tier: 'watch' }],
+      ['a1b2c3d4-e5f6-7890-abcd-ef1234567890', { accountId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', date: yesterdayISO, score: 10, tier: 'critical' }],
     ]);
 
     const { upsertScore } = setupStoreMocks({
@@ -289,7 +291,7 @@ describe('runSync', () => {
     });
 
     mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
-    // GOOD_SIGNALS + licenses=null: dauWau(25) + featureAdoption(15) = 40/40*100 = 100
+    // GOOD_SIGNALS + licenses=null: dauWau(25) + featureAdoption(15) = 40 (no license component)
     mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
 
     const result = await runSync();
@@ -297,8 +299,8 @@ describe('runSync', () => {
     expect(result.scored).toBe(1);
 
     const scoreCall = upsertScore.mock.calls[0][0];
-    expect(scoreCall.score).toBe(100);
-    expect(scoreCall.scoreDelta).toBe(30); // 100 - 70
+    expect(scoreCall.score).toBe(40);
+    expect(scoreCall.scoreDelta).toBe(30); // 40 - 10
   });
 
   it('uses stored licenses from accountStore (not HubSpot data) for scoring', async () => {
@@ -363,9 +365,9 @@ describe('runSync', () => {
 
     const scoreCall = upsertScore.mock.calls[0][0];
     // Volume 7 → -5, Open 3 → -4, High 1 → -2 = total -11
-    // Base score = 100 (no licenses), adjusted = 100 + (-11) = 89
+    // Base score = 40 (no licenses, raw sum), adjusted = 40 + (-11) = 29
     expect(scoreCall.zendeskPenalty).toBe(-11);
-    expect(scoreCall.score).toBe(89);
+    expect(scoreCall.score).toBe(29);
     expect(scoreCall.zendeskDetails).toBeTruthy();
     const details = JSON.parse(scoreCall.zendeskDetails);
     expect(details.totalPenalty).toBe(-11);

@@ -15,7 +15,11 @@ npm install --omit=dev --silent
 
 echo "==> Creating deploy.zip..."
 rm -f deploy.zip
-python -c "
+# Use `python` (works on Windows via py launcher + Linux/macOS if python3 is symlinked).
+# Windows Git Bash's `python3` resolves to a Microsoft Store stub that prints a
+# "Python was not found" message and exits without running anything.
+PYTHON_BIN="$(command -v python || command -v python3)"
+"$PYTHON_BIN" -c "
 import zipfile, os
 with zipfile.ZipFile('deploy.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
     for folder in ['dist', 'node_modules']:

@@ -140,6 +140,7 @@ export async function searchActiveCompanies(
         licenses:    null, // manually entered in the UI; never synced from HubSpot
         domain:      result.properties.domain ?? '',
         hidden:      false,
+        notes:       '', // preserved by Merge mode; never written from sync
       });
     }
 

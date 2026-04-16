@@ -99,6 +99,14 @@ export async function updateAccountHidden(accountId: string, hidden: boolean): P
   if (!res.ok) { const t = await res.text(); throw new Error(t || `Update failed: ${res.status}`); }
 }
 
+export async function updateAccountNotes(accountId: string, notes: string): Promise<void> {
+  const res = await apiFetch(`/accounts/${encodeURIComponent(accountId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ notes }),
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(t || `Update failed: ${res.status}`); }
+}
+
 export async function refreshAccountScore(accountId: string): Promise<{ score: number | null; tier: string; aliasStatus: string | null }> {
   const res = await apiFetch(`/accounts/${encodeURIComponent(accountId)}`, {
     method: 'POST',
