@@ -62,7 +62,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
         throw new Error('SQL data source selected but SQL credentials not configured');
       }
       sqlResult = await fetchAccountsFromSql(
-        config.sqlConnectionString, config.sqlLogin, config.sqlPassword
+        config.sqlConnectionString, config.sqlLogin, config.sqlPassword, config.hubspotPortalId
       );
       companies = sqlResult.accounts;
       log(`Fetched ${companies.length} active accounts from SQL Server`);

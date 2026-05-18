@@ -114,7 +114,8 @@ function extractDomain(email: string | null): string {
 export async function fetchAccountsFromSql(
   connectionString: string,
   login: string,
-  password: string
+  password: string,
+  hubspotPortalId = ''
 ): Promise<SqlFetchResult> {
   const p = await getPool(connectionString, login, password);
 
@@ -148,7 +149,9 @@ export async function fetchAccountsFromSql(
       csmEmail: '', // SQL view has CSM name only, no email
       arr: row.ACV ?? 0,
       renewalDate,
-      hubspotUrl: '', // not available from SQL
+      hubspotUrl: hubspotPortalId && hubspotCompanyId
+        ? `https://app.hubspot.com/contacts/${hubspotPortalId}/company/${hubspotCompanyId}`
+        : '',
       syncedAt: new Date().toISOString(),
       licenses: null, // handled separately via licences map
       domain,

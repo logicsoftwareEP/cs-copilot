@@ -32,6 +32,7 @@ export interface Config {
   sqlPassword: string | null;
   // HubSpot (disabled, retained for rollback)
   hubspotApiKey: string;
+  hubspotPortalId: string;
   amplitudeApiKey: string;
   amplitudeSecretKey: string;
   amplitudeAccountProperty: string;
@@ -77,6 +78,7 @@ export function getConfig(): Config {
     sqlLogin: process.env.SQL_LOGIN ?? null,
     sqlPassword: process.env.SQL_PASSWORD ?? null,
     hubspotApiKey: process.env.HUBSPOT_API_KEY ?? '',
+    hubspotPortalId: process.env.HUBSPOT_PORTAL_ID ?? '',
     amplitudeApiKey: requireEnv('AMPLITUDE_API_KEY'),
     amplitudeSecretKey: requireEnv('AMPLITUDE_SECRET_KEY'),
     amplitudeAccountProperty: process.env.AMPLITUDE_ACCOUNT_PROPERTY ?? 'gp:alias',

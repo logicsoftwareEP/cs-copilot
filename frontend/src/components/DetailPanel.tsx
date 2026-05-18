@@ -82,6 +82,14 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
                 </svg>
               </a>
             )}
+            <a href={`https://adminportal.easyprojects.net/portal/clients/${summary.accountId}`} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[14px] text-obs-accent hover:text-obs-glow transition-colors group">
+              Open in Portal
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"
+                   className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform">
+                <path d="M2 10L10 2M4 2h6v6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
             {!isCSM && (
               <a href={`/troubleshoot?account=${encodeURIComponent(summary.accountId)}`} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-[14px] text-obs-accent hover:text-obs-glow transition-colors group">
@@ -362,7 +370,7 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
                 ))}
                 {summary.hubspotCompanyId && (
                   <div className="flex items-center justify-between px-4 py-2.5 text-[14px]">
-                    <dt className="text-obs-ghost">HubSpot</dt>
+                    <dt className="text-obs-ghost">HubSpot ID</dt>
                     <dd>
                       {summary.hubspotUrl ? (
                         <a href={summary.hubspotUrl} target="_blank" rel="noopener noreferrer"
