@@ -1,6 +1,6 @@
 # CS Copilot - Progress
 
-## Status: Live — ClientId migration + license fix (2026-03-24)
+## Status: Live — HubSpot + Portal links in detail panel (2026-05-18)
 
 **Spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 **Plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`
@@ -38,6 +38,17 @@
 | 15 | Update `App.tsx` with routing | **DONE** | Routes for / and /mapping, staticwebapp.config.json for SPA |
 
 ---
+
+### 2026-05-18 — HubSpot + Portal links in detail panel
+
+**Changes:**
+- Restored "Open in Portal" link (`adminportal.easyprojects.net/portal/clients/{accountId}`) lost in sprint-8 merge regression
+- Added `HUBSPOT_PORTAL_ID` optional env var (`5966961` in production); `sqlClient.ts` now constructs `hubspotUrl` as `https://app.hubspot.com/contacts/{portalId}/company/{companyId}` when set
+- `config.ts` + `SyncRunner.ts` updated to pass portal ID through to SQL client
+- "Open in HubSpot" header link and "HubSpot ID" Account Details row now both active (previously `hubspotUrl` was always `''` from SQL)
+- Fixed `deploy.sh` to use `python` instead of `python3` (Windows Store stub fix)
+
+**Files changed:** `DetailPanel.tsx`, `config.ts`, `sqlClient.ts`, `SyncRunner.ts`, `backend/scripts/deploy.sh`
 
 ### 2026-03-24 — ClientId migration: fix license collisions + split multi-division accounts
 

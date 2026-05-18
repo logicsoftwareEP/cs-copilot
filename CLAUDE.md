@@ -129,7 +129,7 @@ SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only cr
 
 **Required:** `AZURE_STORAGE_CONNECTION_STRING`, `AMPLITUDE_API_KEY`, `AMPLITUDE_SECRET_KEY`, `SQL_SERVER_DETAILS`, `SQL_LOGIN`, `SQL_PASSWORD`
 
-**Optional:** `DATA_SOURCE` (default `sql`), `HUBSPOT_API_KEY` (for rollback), `AMPLITUDE_ACCOUNT_PROPERTY` (default `gp:alias`), `AMPLITUDE_FEATURE_EVENTS` (JSON), `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`, `INTERCOM_ACCESS_TOKEN`, `SKIP_AUTH` (local dev only), `SWA_ORIGIN` (locks CORS to frontend domain; defaults to `*`)
+**Optional:** `DATA_SOURCE` (default `sql`), `HUBSPOT_API_KEY` (for rollback), `HUBSPOT_PORTAL_ID` (numeric portal ID — when set, sqlClient builds `hubspotUrl` per account enabling "Open in HubSpot" header link and clickable HubSpot ID in detail panel; production value: `5966961`), `AMPLITUDE_ACCOUNT_PROPERTY` (default `gp:alias`), `AMPLITUDE_FEATURE_EVENTS` (JSON), `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`, `INTERCOM_ACCESS_TOKEN`, `SKIP_AUTH` (local dev only), `SWA_ORIGIN` (locks CORS to frontend domain; defaults to `*`)
 
 ## Amplitude API — CRITICAL
 

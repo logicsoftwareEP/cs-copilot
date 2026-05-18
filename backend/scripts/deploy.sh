@@ -15,7 +15,7 @@ npm install --omit=dev --silent
 
 echo "==> Creating deploy.zip..."
 rm -f deploy.zip
-python3 -c "
+python -c "
 import zipfile, os
 with zipfile.ZipFile('deploy.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
     for folder in ['dist', 'node_modules']:

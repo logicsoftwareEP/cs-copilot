@@ -1,0 +1,106 @@
+# CS Copilot
+
+> Customer Success health-scoring dashboard for Birdview PSA. Syncs account data nightly from SQL Server, enriches with Amplitude usage signals, Zendesk tickets, and Intercom conversations, computes health scores, and serves a role-based React dashboard.
+
+## Stack
+
+- **Backend**: Azure Functions v4, Node.js 20, TypeScript (CommonJS), mssql, @azure/data-tables, zod
+- **Frontend**: React 18, Vite 6, TypeScript, Tailwind CSS 3, react-router-dom v7
+- **Infrastructure**: Azure Static Web Apps (frontend), Azure Functions (backend), Azure Table Storage, SQL Server
+- **Auth**: Azure SWA Entra ID (AAD), role-based (admin/supervisor/csm)
+- **Testing**: Jest + ts-jest (backend), 178 tests across 13 suites
+
+## Architecture
+
+```
+SQL Server ([analytics].[ClientsOverview])
+    |
+    v
+SyncRunner (timer 2AM UTC / POST /api/sync)
+    |---> Amplitude Segmentation API (MAU + feature breadth)
+    |---> Zendesk API (open tickets by domain)
+    |---> Intercom API (conversations by domain)
+    v
+Azure Table Storage (6 tables)
+    |
+    v
+Azure Functions HTTP APIs
+    |
+    v
+React SPA (Azure Static Web Apps, Entra ID auth)
+```
+
+## Entry Points
+
+- **Backend main**: `backend/src/index.ts` (imports all function modules as side effects)
+- **Frontend main**: `frontend/src/main.tsx`
+- **Config**: `backend/src/config.ts` (all env vars via `getConfig()`)
+
+## API Routes
+
+| Method | Route | Auth | Handler |
+|--------|-------|------|---------|
+| GET | /api/accounts | all roles | AccountsApi.ts |
+| GET | /api/accounts/{id} | all roles | AccountsApi.ts |
+| PATCH | /api/accounts/{id} | admin/supervisor | AccountsApi.ts |
+| GET | /api/mapping | all roles | MappingApi.ts |
+| POST | /api/mapping | all roles | MappingApi.ts |
+| DELETE | /api/mapping/{id} | all roles | MappingApi.ts |
+| POST | /api/sync | admin | SyncTrigger.ts |
+| GET | /api/sync | all roles | SyncTrigger.ts |
+| GET | /api/me | all roles | UsersApi.ts |
+| GET | /api/users | admin | UsersApi.ts |
+| POST | /api/users | admin | UsersApi.ts |
+| DELETE | /api/users | admin | UsersApi.ts |
+
+## Data Model (Azure Table Storage)
+
+| Table | PartitionKey | RowKey | Purpose |
+|-------|-------------|--------|---------|
+| accounts | "accounts" | accountId (ClientId GUID) | Account data from SQL Server |
+| amplitudemapping | "mapping" | accountId | Account -> Amplitude alias mapping |
+| churnscores | accountId | YYYY-MM-DD | Daily health scores per account |
+| users | "users" | email (lowercase) | User roles and display names |
+| intercomscores | domain | YYYY-MM-DD | Daily Intercom conversation snapshots |
+| syncstatus | single row | - | Sync state tracking (running/completed/failed) |
+
+## Key Patterns
+
+- **Auth flow**: SWA login -> `/.auth/me` -> `X-User-Email` header -> backend `authenticateRequest()` -> users table lookup
+- **CORS**: Every HTTP handler must respond to OPTIONS with `CORS_HEADERS` (wildcard origin, includes X-User-Email)
+- **Rate limiting**: Amplitude calls go through `amplitudeFetch()` with concurrency limiter (max 4) + exponential backoff on 429
+- **Input validation**: Zod validates external inputs in MappingApi and UsersApi
+- **CSM filtering**: `csmName` matched case-insensitively to user's `displayName`
+- **New functions**: Must be added to `src/index.ts` as an import side effect
+- **API calls (frontend)**: All fetch calls centralised in `frontend/src/services/api.ts`
+
+## Health Score Formula
+
+Licence utilisation (0-60) + activity trend (0-25) + feature adoption (0-15) + Intercom bonus (0-10) - Zendesk/Intercom penalty (0 to -20)
+
+Tiers: healthy | watch | at-risk | critical
+
+## Commands
+
+```bash
+# Backend
+cd backend && npm run build   # tsc -> dist/
+cd backend && npm start        # func start
+cd backend && npm test         # jest (178 tests)
+
+# Frontend
+cd frontend && npm run dev     # vite dev server
+cd frontend && npm run build   # tsc + vite build
+```
+
+## Critical Warnings
+
+1. **Amplitude filters**: MUST go inside the event object's `filters` array, NOT as top-level query param (silently ignored)
+2. **Amplitude case sensitivity**: `is` filter is case-sensitive; 32 aliases have manual casing corrections in amplitudemapping table
+3. **Azure Functions v4**: Do NOT register multiple `app.http()` on the same route with different methods; use one handler and dispatch by `req.method`
+4. **Windows Base64**: Do NOT use `echo -n | base64` in Git Bash; use Python for Basic Auth encoding
+5. **func CLI**: v4.7+ crashes with Node.js 24; use `azure-functions-core-tools@4.0.6610`
+6. **deploy.sh uses `python` not `python3`**: `python3` resolves to the Windows Store stub on this machine and fails silently
+7. **HUBSPOT_PORTAL_ID**: optional env var (production: `5966961`); when set, `sqlClient.ts` constructs `hubspotUrl` as `https://app.hubspot.com/contacts/{portalId}/company/{companyId}` — required for HubSpot links in the detail panel to be active
+
+<!-- updated-by-superflow:2026-05-18 -->
