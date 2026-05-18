@@ -351,7 +351,6 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
                   { label: 'ARR',        value: formatArr(summary.arr) },
                   { label: 'Renewal',    value: renewal.label, color: RENEWAL_COLOURS[renewal.urgency] },
                   { label: 'Owner',      value: summary.csmName || '—' },
-                  { label: 'HubSpot ID', value: summary.hubspotCompanyId, mono: true },
                 ].map(({ label, value, color, mono }) => (
                   <div key={label} className="flex items-center justify-between px-4 py-2.5 text-[14px]">
                     <dt className="text-obs-ghost">{label}</dt>
@@ -361,6 +360,21 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
                     </dd>
                   </div>
                 ))}
+                {summary.hubspotCompanyId && (
+                  <div className="flex items-center justify-between px-4 py-2.5 text-[14px]">
+                    <dt className="text-obs-ghost">HubSpot</dt>
+                    <dd>
+                      {summary.hubspotUrl ? (
+                        <a href={summary.hubspotUrl} target="_blank" rel="noopener noreferrer"
+                          className="font-mono text-obs-accent hover:text-obs-glow transition-colors">
+                          {summary.hubspotCompanyId}
+                        </a>
+                      ) : (
+                        <span className="font-mono text-obs-dim">{summary.hubspotCompanyId}</span>
+                      )}
+                    </dd>
+                  </div>
+                )}
               </div>
             </div>
           </div>
