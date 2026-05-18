@@ -351,10 +351,10 @@ export function DetailPanel({ summary, onClose, onScoreRefreshed }: {
                   { label: 'ARR',        value: formatArr(summary.arr) },
                   { label: 'Renewal',    value: renewal.label, color: RENEWAL_COLOURS[renewal.urgency] },
                   { label: 'Owner',      value: summary.csmName || '—' },
-                ].map(({ label, value, color, mono }) => (
+                ].map(({ label, value, color }) => (
                   <div key={label} className="flex items-center justify-between px-4 py-2.5 text-[14px]">
                     <dt className="text-obs-ghost">{label}</dt>
-                    <dd className={`font-medium ${mono ? 'font-mono text-obs-dim' : ''}`}
+                    <dd className="font-medium"
                         style={color ? { color } : { color: '#C1C7D2' }}>
                       {value}
                     </dd>
