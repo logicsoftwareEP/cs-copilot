@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Repo:** `logicsoftwareEP/cs-copilot` (https://github.com/logicsoftwareEP/cs-copilot). Working copy lives at `D:/Logic Software/cs-copilot/`. Prior to 2026-05-21 this project was a subdirectory of the `D:/Logic Software/AI/` monorepo — that history was extracted via `git subtree split` into this dedicated repo. Do not commit cs-copilot work back into the AI monorepo.
+
 ## Commands
 
 ```bash
