@@ -8,3 +8,4 @@ frontend/.env.production
 .worktrees/
 .superflow-state.json
 CLAUDE.local.md
+.worktrees/
