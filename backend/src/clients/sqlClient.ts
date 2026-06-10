@@ -170,3 +170,64 @@ export async function fetchAccountsFromSql(
 
   return { accounts, aliases, licences };
 }
+
+export interface ScoreExportRow {
+  clientId: string;   // account GUID (= ClientId in [analytics].[ClientsOverview])
+  score: number | null;
+  tier: string;
+  scoreDate: string;  // YYYY-MM-DD
+}
+
+/**
+ * Replace the contents of [analytics].[AccountHealthScores] with the given
+ * snapshot: DELETE all rows + bulk INSERT, in one transaction. Retries the
+ * whole transaction on transient errors (same policy as queryWithRetry).
+ * Empty input is a no-op — never wipes the table on an empty snapshot.
+ * Returns the number of rows written.
+ */
+export async function exportScoresToSql(
+  connectionString: string,
+  login: string,
+  password: string,
+  rows: ScoreExportRow[],
+  retries = 3
+): Promise<number> {
+  if (rows.length === 0) return 0;
+
+  const p = await getPool(connectionString, login, password);
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const transaction = new sql.Transaction(p);
+    try {
+      await transaction.begin();
+      await new sql.Request(transaction)
+        .query('DELETE FROM [analytics].[AccountHealthScores]');
+
+      const table = new sql.Table('analytics.AccountHealthScores');
+      table.create = false;
+      table.columns.add('ClientId', sql.UniqueIdentifier, { nullable: false });
+      table.columns.add('Score', sql.Int, { nullable: true });
+      table.columns.add('Tier', sql.NVarChar(20), { nullable: false });
+      table.columns.add('ScoreDate', sql.Date, { nullable: false });
+      table.columns.add('UpdatedAt', sql.DateTime2, { nullable: false });
+
+      const now = new Date();
+      for (const row of rows) {
+        table.rows.add(row.clientId, row.score, row.tier, new Date(row.scoreDate), now);
+      }
+
+      await new sql.Request(transaction).bulk(table);
+      await transaction.commit();
+      return rows.length;
+    } catch (err) {
+      try {
+        await transaction.rollback();
+      } catch {
+        // transaction never began or was already aborted — nothing to roll back
+      }
+      if (attempt === retries || !isTransient(err)) throw err;
+      await sleep(1000 * Math.pow(2, attempt - 1)); // 1s, 2s
+    }
+  }
+  throw new Error('exportScoresToSql: unreachable');
+}
