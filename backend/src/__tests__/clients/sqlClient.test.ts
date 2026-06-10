@@ -8,14 +8,20 @@ jest.mock('mssql', () => {
   const tables: any[] = [];
 
   class MockTable {
+    // Mirrors real mssql Table parsing: 'schema.table' → name/schema/path
     name: string;
+    schema: string | null;
+    path: string;
     create = true;
     columnList: any[] = [];
     rowList: any[] = [];
     columns = { add: (...args: any[]) => this.columnList.push(args) };
     rows = { add: (...args: any[]) => this.rowList.push(args) };
-    constructor(name: string) {
-      this.name = name;
+    constructor(input: string) {
+      const parts = input.split('.');
+      this.name = parts[parts.length - 1];
+      this.schema = parts.length > 1 ? parts[parts.length - 2] : null;
+      this.path = parts.map(p => `[${p}]`).join('.');
       tables.push(this);
     }
   }
@@ -90,7 +96,8 @@ describe('exportScoresToSql', () => {
 
     // Table targets the right name and carries both rows
     expect(tables).toHaveLength(1);
-    expect(tables[0].name).toBe('analytics.AccountHealthScores');
+    expect(tables[0].path).toBe('[analytics].[AccountHealthScores]');
+    expect(tables[0].schema).toBe('analytics');
     expect(tables[0].create).toBe(false);
     expect(tables[0].rowList).toHaveLength(2);
     // Row shape: [ClientId, Score, Tier, ScoreDate, UpdatedAt]

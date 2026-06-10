@@ -55,6 +55,7 @@ async function getPool(
     user: login,
     password,
     options: {
+      // Do not set useUTC:false — DATE serialization in exportScoresToSql relies on the UTC default.
       encrypt: true,
       trustServerCertificate: false,
       connectTimeout: 15000,
@@ -211,7 +212,7 @@ export async function exportScoresToSql(
       table.columns.add('ScoreDate', sql.Date, { nullable: false });
       table.columns.add('UpdatedAt', sql.DateTime2, { nullable: false });
 
-      const now = new Date();
+      const now = new Date(); // per attempt — UpdatedAt reflects the attempt that committed
       for (const row of rows) {
         table.rows.add(row.clientId, row.score, row.tier, new Date(row.scoreDate), now);
       }
