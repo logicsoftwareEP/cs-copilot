@@ -9,3 +9,5 @@ frontend/.env.production
 .superflow-state.json
 CLAUDE.local.md
 .worktrees/
+backend/.deploy-stage/
+backend/deploy.zip

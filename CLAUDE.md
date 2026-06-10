@@ -152,10 +152,10 @@ SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only cr
 
 ## Deploy Notes
 
-`backend/scripts/deploy.sh` sequence: `tsc` → `npm install --omit=dev` → zip → `az functionapp deployment source config-zip` → `npm install` (restore dev deps).
+`backend/scripts/deploy.sh` sequence: `tsc` → staged `npm ci --omit=dev` (cached) → zip from stage → `az functionapp deployment source config-zip` (run-from-package).
 
 - **Python on Windows**: the script uses `python` (via `command -v python || command -v python3`) to build `deploy.zip`. Do **not** hardcode `python3` — on Windows Git Bash it resolves to the Microsoft Store alias, prints "Python was not found", and exits without creating the zip. Real Python is at `/c/Python314/python`; `py` launcher also works.
-- **If deploy fails mid-run**, dev deps may have already been stripped by `npm install --omit=dev`. Run `cd backend && npm install` to restore TypeScript etc. before retrying, otherwise `npx tsc` will fail.
+- **Staging dir:** the deploy builds the package in `backend/.deploy-stage/` (cached `npm ci --omit=dev`, refreshed only when `package-lock.json` changes — tracked via a sha256 lock hash) and never touches the working tree's `node_modules`. A failed deploy leaves the working tree intact. Delete `backend/.deploy-stage/` to force a clean rebuild of the cached production deps.
 - **Deploy command:** `bash backend/scripts/deploy.sh` (run from the repo root or backend/).
 - **Trigger manual sync after deploy:** `curl -X POST "https://cs-copilot-func.azurewebsites.net/api/sync?code=<FUNCTION_KEY>" -H "X-User-Email: vadim@logicsoftware.net"` — returns 202 immediately, sync runs in background (~5 min for 268 accounts). Get the key via `az functionapp keys list --name cs-copilot-func --resource-group customersuccess`.
 
