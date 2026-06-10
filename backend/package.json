@@ -8,7 +8,8 @@
     "watch": "tsc -w",
     "start": "func start",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "smoke:sql-scores": "npx ts-node scripts/smoke-test-sql-scores.ts"
   },
   "dependencies": {
     "@azure/data-tables": "^13.3.0",

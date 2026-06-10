@@ -29,7 +29,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function getPool(
+export async function getPool(
   connectionString: string,
   login: string,
   password: string
