@@ -1,6 +1,6 @@
 # CS Copilot - Progress
 
-## Status: Live — HubSpot + Portal links in detail panel (2026-05-18)
+## Status: Live — PowerBI health score export to SQL (2026-06-10)
 
 **Spec:** `docs/plans/2026-03-11-cs-copilot-mvp-design.md`
 **Plan:** `docs/plans/2026-03-11-cs-copilot-mvp-implementation.md`

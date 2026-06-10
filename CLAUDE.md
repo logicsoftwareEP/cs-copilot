@@ -113,6 +113,8 @@ Six Azure Table Storage tables:
 - **`intercomscores`** - Daily Intercom conversation snapshots per domain (30d rolling window)
 - **`syncstatus`** - Single row tracking sync state (running/completed/failed) for UI polling
 
+Health scores are also exported to a SQL table for PowerBI — see Data Source.
+
 `Account` → joined with latest `ChurnScore` + `AmplitudeMapping` → returned as `AccountSummary`.
 
 Types renamed from `HubspotAccount`/`hubspotId` to `Account`/`accountId` (2026-03-16). `accountId` switched from `HubSpotCompanyId` (numeric) to `ClientId` (GUID, lowercased) on 2026-03-24 — each division/department is now a separate account. `hubspotCompanyId` retained as a non-key informational field.
@@ -127,7 +129,7 @@ SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only cr
 
 **Account key:** `accountId` is the `ClientId` GUID from the SQL view (lowercased). Each row in `[analytics].[ClientsOverview]` is a separate account (divisions/departments within the same company get their own account). The old `HubSpotCompanyId` is stored as `hubspotCompanyId` for reference.
 
-**PowerBI export:** after every sync, the latest score per account is written to `[analytics].[AccountHealthScores]` in the same `AccountsControl` database (full snapshot replace: DELETE + bulk INSERT). PowerBI joins it to `[analytics].[ClientsOverview]` on `ClientId`. One-time setup: run `backend/scripts/sql/create-account-health-scores.sql` as admin (CREATE + GRANT SELECT/INSERT/DELETE to the app login). Verify with `npm run smoke:sql-scores`.
+**PowerBI export:** after every sync, the latest score per account is written to `[analytics].[AccountHealthScores]` in the same `AccountsControl` database (full snapshot replace: DELETE + bulk INSERT). PowerBI joins it to `[analytics].[ClientsOverview]` on `ClientId`. One-time setup: run `backend/scripts/sql/create-account-health-scores.sql` as admin (CREATE + GRANT SELECT/INSERT/DELETE to the app login (`SQL_LOGIN`)). Verify with `npm run smoke:sql-scores`.
 
 ## Env vars
 
