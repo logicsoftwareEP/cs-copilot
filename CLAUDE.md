@@ -35,7 +35,7 @@ Entry point `src/index.ts` imports all function modules as side effects.
 - `AccountsApi.ts` - `GET /api/accounts` (list, CSM-filtered), `GET /api/accounts/{id}` (detail), `PATCH /api/accounts/{id}` (admin/supervisor: update ARR/licences). Auth required on all.
 - `MappingApi.ts` - `GET /api/mapping`, `POST /api/mapping`, `DELETE /api/mapping/{id}`. All authenticated roles (admin/supervisor/csm).
 - `SyncTrigger.ts` - `POST /api/sync` (admin only, returns 202, fire-and-forget), `GET /api/sync` (sync status). Uses `SyncStatusStore` to track running/completed/failed state.
-- `SyncRunner.ts` - Timer trigger (2 AM UTC daily) + `runSync()` export. Orchestrates: SQL Server → accounts table, Amplitude → health scores, Zendesk → penalties. After scoring, exports the latest score per account to SQL `[analytics].[AccountHealthScores]` for PowerBI (snapshot replace; non-fatal on failure).
+- `SyncRunner.ts` - Timer trigger (every 30 min, 02:00–05:59 UTC = 8 slices/night) + `runSync()` export. Orchestrates: SQL Server → accounts table, Amplitude → health scores, Zendesk → penalties. After scoring, exports the latest score per account to SQL `[analytics].[AccountHealthScores]` for PowerBI (snapshot replace; non-fatal on failure). Each slice is time-boxed to 8 min (`SYNC_TIME_BUDGET_MS`) so it stops cleanly before the Consumption-plan 10-min `functionTimeout` kills it; accounts not reached are deferred (`SyncResult.remaining`) and picked up by the next slice — accounts already scored today are skipped, so slices resume until all accounts are scored.
 - `UsersApi.ts` - `GET /api/me` (current user), `GET /api/users`, `POST /api/users`, `DELETE /api/users?email=...`. Admin only (except `/api/me`).
 
 **Auth** (`src/auth.ts`):

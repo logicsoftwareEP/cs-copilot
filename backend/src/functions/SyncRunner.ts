@@ -22,6 +22,11 @@ function isAllZeroSignals(signals: AmplitudeSignals): boolean {
   );
 }
 
+// Stop scoring before the Consumption-plan functionTimeout (10 min) kills the
+// invocation mid-write. Remaining accounts are picked up by the next timer
+// slice — accounts scored today are skipped on re-run, so slices converge.
+export const SYNC_TIME_BUDGET_MS = 8 * 60 * 1000;
+
 export interface SyncResult {
   synced: number;   // accounts upserted to accountStore
   scored: number;   // accounts with a score computed
@@ -29,10 +34,11 @@ export interface SyncResult {
   zendeskFetched: number; // domains with Zendesk data fetched
   intercomFetched: number; // domains with Intercom data fetched
   scoresExported: number; // rows written to SQL [analytics].[AccountHealthScores]
+  remaining: number; // accounts not scored this run due to the time budget (picked up next slice)
   errors: string[]; // error messages
 }
 
-export async function runSync(context?: InvocationContext): Promise<SyncResult> {
+export async function runSync(context?: InvocationContext, timeBudgetMs: number = SYNC_TIME_BUDGET_MS): Promise<SyncResult> {
   const log = (msg: string, ...args: unknown[]) => {
     if (context) {
       context.log(msg, ...args);
@@ -42,6 +48,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
   };
 
   try {
+    const syncStarted = Date.now();
     const config = getConfig();
 
     const accountStore = new AccountStore(config.storageConnectionString, config.tableAccounts);
@@ -228,11 +235,18 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
 
     let scored = 0;
     let failed = 0;
+    let remaining = 0;
     const errors: string[] = [];
 
     for (const company of companies) {
       // Skip scoring for hidden accounts
       if (storedMap.get(company.accountId)?.hidden) {
+        continue;
+      }
+
+      // Time budget exhausted — stop cleanly; next slice resumes via skip logic
+      if (Date.now() - syncStarted > timeBudgetMs) {
+        remaining++;
         continue;
       }
 
@@ -317,6 +331,7 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
     }
 
     if (skipped > 0) log(`Skipped ${skipped} accounts with existing valid scores`);
+    if (remaining > 0) log(`Time budget reached: ${remaining} accounts deferred to next sync slice`);
 
     // ── Export latest scores to SQL for PowerBI ──────────────────────────
     // Today's churnscores rows are the complete current snapshot: accounts
@@ -343,15 +358,15 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
       }
     }
 
-    return { synced: companies.length, scored, failed, zendeskFetched, intercomFetched, scoresExported, errors };
+    return { synced: companies.length, scored, failed, zendeskFetched, intercomFetched, scoresExported, remaining, errors };
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    return { synced: 0, scored: 0, failed: 0, zendeskFetched: 0, intercomFetched: 0, scoresExported: 0, errors: [msg] };
+    return { synced: 0, scored: 0, failed: 0, zendeskFetched: 0, intercomFetched: 0, scoresExported: 0, remaining: 0, errors: [msg] };
   }
 }
 
 app.timer('NightlySync', {
-  schedule: '0 0 2 * * *',  // 2 AM UTC daily
+  schedule: '0 */30 2-5 * * *',  // every 30 min, 02:00–05:59 UTC — slices resume until all accounts scored
   handler: async (myTimer: Timer, context: InvocationContext) => {
     const result = await runSync(context);
     context.log('Nightly sync complete:', result);

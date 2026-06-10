@@ -46,6 +46,11 @@
 - Smoke test: `npm run smoke:sql-scores` (real traffic — Table Storage read + live SQL write + read-back). Verified against live DB 2026-06-10: 35/35 rows.
 - Spec: `docs/superpowers/specs/2026-06-10-powerbi-scores-export-design.md`.
 
+### 2026-06-10 — Self-resuming time-boxed sync slices (functionTimeout fix)
+
+- Nightly sync now runs as self-resuming slices instead of a single 02:00 run. Timer fires every 30 min, 02:00–05:59 UTC (8 slices/night): `schedule: '0 */30 2-5 * * *'`.
+- Scoring loop is time-boxed to 8 min (`SYNC_TIME_BUDGET_MS` in `SyncRunner.ts`) so it stops cleanly before the Consumption-plan 10-min `functionTimeout` kills the invocation mid-write. Accounts not reached this run are deferred (`SyncResult.remaining`) and scored by the next slice; already-scored accounts are skipped, so slices converge. SQL export still runs on partial results.
+
 ### 2026-05-18 — HubSpot + Portal links in detail panel
 
 **Changes:**

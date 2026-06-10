@@ -844,4 +844,68 @@ describe('runSync', () => {
     expect(mockExportScoresToSql).not.toHaveBeenCalled();
     expect(result.scoresExported).toBe(0);
   });
+
+  // ── Time-budget tests ────────────────────────────────────────────────────
+
+  it('time budget 0: defers all unscored accounts, remaining counted, no scoring calls', async () => {
+    const { upsertScore } = setupStoreMocks({
+      mappings: [
+        { accountId: COMPANY_A.accountId, amplitudeAlias: 'alpha' },
+        { accountId: COMPANY_B.accountId, amplitudeAlias: 'beta' },
+      ],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A, COMPANY_B]);
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+
+    const result = await runSync(undefined, 0);
+
+    expect(result.remaining).toBe(2);
+    expect(result.scored).toBe(0);
+    expect(result.synced).toBe(2);          // account upserts still happen
+    expect(mockFetchSignals).not.toHaveBeenCalled();
+    expect(upsertScore).not.toHaveBeenCalled(); // no placeholder writes for deferred accounts
+  });
+
+  it('default budget: nothing deferred on a normal run', async () => {
+    setupStoreMocks({
+      mappings: [{ accountId: COMPANY_A.accountId, amplitudeAlias: 'alpha' }],
+    });
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+
+    const result = await runSync();
+
+    expect(result.remaining).toBe(0);
+    expect(result.scored).toBe(1);
+  });
+
+  it('time budget 0 with SQL source: export still runs on partial result', async () => {
+    enableSqlConfig();
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const todayScoreMap = new Map<string, any>([
+      [COMPANY_A.accountId, { accountId: COMPANY_A.accountId, date: todayISO, score: 75, tier: 'healthy' }],
+    ]);
+
+    setupStoreMocks({
+      mappings: [{ accountId: COMPANY_A.accountId, amplitudeAlias: 'alpha' }],
+      todayScores: todayScoreMap,
+    });
+    mockFetchAccountsFromSql.mockResolvedValue({
+      accounts: [COMPANY_A, COMPANY_B],
+      aliases: new Map(),
+      licences: new Map(),
+    });
+    mockExportScoresToSql.mockResolvedValue(1);
+
+    const result = await runSync(undefined, 0);
+
+    // Both accounts deferred (budget 0 fires before the already-scored skip),
+    // but the export still ships today's existing snapshot.
+    expect(result.remaining).toBe(2);
+    expect(mockExportScoresToSql).toHaveBeenCalledTimes(1);
+    expect(result.scoresExported).toBe(1);
+
+    disableSqlConfig();
+  });
 });
