@@ -19,7 +19,7 @@ jest.mock('../../services/intercomStore');
 
 import { runSync } from '../../functions/SyncRunner';
 import { searchActiveCompanies } from '../../clients/hubspotClient';
-import { fetchAccountsFromSql } from '../../clients/sqlClient';
+import { fetchAccountsFromSql, exportScoresToSql } from '../../clients/sqlClient';
 import { fetchSignals, validateAlias } from '../../clients/amplitudeClient';
 import { fetchAllZendeskTickets } from '../../clients/zendeskClient';
 import { fetchIntercomConversations } from '../../clients/intercomClient';
@@ -43,6 +43,7 @@ beforeAll(() => {
 
 const mockSearchActiveCompanies = searchActiveCompanies as jest.MockedFunction<typeof searchActiveCompanies>;
 const mockFetchAccountsFromSql = fetchAccountsFromSql as jest.MockedFunction<typeof fetchAccountsFromSql>;
+const mockExportScoresToSql = exportScoresToSql as jest.MockedFunction<typeof exportScoresToSql>;
 const mockFetchSignals = fetchSignals as jest.MockedFunction<typeof fetchSignals>;
 const mockFetchAllZendeskTickets = fetchAllZendeskTickets as jest.MockedFunction<typeof fetchAllZendeskTickets>;
 const mockFetchIntercom = fetchIntercomConversations as jest.MockedFunction<typeof fetchIntercomConversations>;
@@ -177,6 +178,7 @@ beforeEach(() => {
   mockValidateAlias.mockResolvedValue(true); // default: alias is valid
   mockFetchIntercom.mockResolvedValue(new Map()); // default: empty
   disableIntercomConfig(); // default: Intercom disabled
+  mockExportScoresToSql.mockResolvedValue(0); // default: export succeeds, 0 rows
 });
 
 describe('runSync', () => {
@@ -762,5 +764,84 @@ describe('runSync', () => {
     expect(result.intercomFetched).toBe(0);
 
     disableIntercomConfig();
+  });
+
+  // ── PowerBI SQL score export tests ──────────────────────────────────────
+
+  it("SQL data source: exports today's score snapshot to SQL after scoring", async () => {
+    enableSqlConfig();
+    const todayISO = new Date().toISOString().slice(0, 10);
+
+    // COMPANY_A already has a valid score today → scoring skips it, but the
+    // export must still ship the snapshot row.
+    const todayScoreMap = new Map<string, any>([
+      [COMPANY_A.accountId, { accountId: COMPANY_A.accountId, date: todayISO, score: 75, tier: 'healthy' }],
+    ]);
+
+    setupStoreMocks({
+      mappings: [{ accountId: COMPANY_A.accountId, amplitudeAlias: 'alpha' }],
+      todayScores: todayScoreMap,
+    });
+
+    mockFetchAccountsFromSql.mockResolvedValue({
+      accounts: [COMPANY_A],
+      aliases: new Map(),
+      licences: new Map(),
+    });
+    mockExportScoresToSql.mockResolvedValue(1);
+
+    const result = await runSync();
+
+    expect(mockExportScoresToSql).toHaveBeenCalledTimes(1);
+    expect(mockExportScoresToSql).toHaveBeenCalledWith(
+      'Server=tcp:test.database.windows.net,1433;Database=TestDB',
+      'testuser',
+      'testpass',
+      [{ clientId: COMPANY_A.accountId, score: 75, tier: 'healthy', scoreDate: todayISO }]
+    );
+    expect(result.scoresExported).toBe(1);
+    expect(result.errors).toHaveLength(0);
+
+    disableSqlConfig();
+  });
+
+  it('SQL export failure is non-fatal: sync completes, error recorded', async () => {
+    enableSqlConfig();
+    setupStoreMocks({
+      mappings: [{ accountId: COMPANY_A.accountId, amplitudeAlias: 'alpha' }],
+    });
+
+    mockFetchAccountsFromSql.mockResolvedValue({
+      accounts: [COMPANY_A],
+      aliases: new Map(),
+      licences: new Map(),
+    });
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+    mockExportScoresToSql.mockRejectedValue(new Error('Invalid object name AccountHealthScores'));
+
+    const result = await runSync();
+
+    expect(result.synced).toBe(1);
+    expect(result.scored).toBe(1);          // sync itself succeeded
+    expect(result.scoresExported).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('Invalid object name');
+
+    disableSqlConfig();
+  });
+
+  it('HubSpot data source: SQL export is skipped', async () => {
+    // default config from beforeAll is DATA_SOURCE=hubspot
+    setupStoreMocks({
+      mappings: [{ accountId: COMPANY_A.accountId, amplitudeAlias: 'alpha' }],
+    });
+
+    mockSearchActiveCompanies.mockResolvedValue([COMPANY_A]);
+    mockFetchSignals.mockResolvedValue(GOOD_SIGNALS);
+
+    const result = await runSync();
+
+    expect(mockExportScoresToSql).not.toHaveBeenCalled();
+    expect(result.scoresExported).toBe(0);
   });
 });

@@ -5,7 +5,7 @@ import { MappingStore } from '../services/mappingStore';
 import { ScoreStore } from '../services/scoreStore';
 import { UserStore } from '../services/userStore';
 import { searchActiveCompanies } from '../clients/hubspotClient';
-import { fetchAccountsFromSql, SqlFetchResult } from '../clients/sqlClient';
+import { fetchAccountsFromSql, SqlFetchResult, exportScoresToSql, ScoreExportRow } from '../clients/sqlClient';
 import { fetchSignals, validateAlias, AmplitudeSignals } from '../clients/amplitudeClient';
 import { Account } from '../types';
 import { fetchAllZendeskTickets, ZendeskTicketData } from '../clients/zendeskClient';
@@ -28,6 +28,7 @@ export interface SyncResult {
   failed: number;   // accounts where Amplitude fetch failed
   zendeskFetched: number; // domains with Zendesk data fetched
   intercomFetched: number; // domains with Intercom data fetched
+  scoresExported: number; // rows written to SQL [analytics].[AccountHealthScores]
   errors: string[]; // error messages
 }
 
@@ -316,10 +317,36 @@ export async function runSync(context?: InvocationContext): Promise<SyncResult> 
     }
 
     if (skipped > 0) log(`Skipped ${skipped} accounts with existing valid scores`);
-    return { synced: companies.length, scored, failed, zendeskFetched, intercomFetched, errors };
+
+    // ── Export latest scores to SQL for PowerBI ──────────────────────────
+    // Today's churnscores rows are the complete current snapshot: accounts
+    // skipped during scoring already have today's row; hidden accounts have
+    // none. Failure is non-fatal — Table Storage stays the source of truth.
+    let scoresExported = 0;
+    if (config.dataSource === 'sql' && config.sqlConnectionString && config.sqlLogin && config.sqlPassword) {
+      try {
+        const finalScores = await scoreStore.getAllScoresForDate(todayISO);
+        const exportRows: ScoreExportRow[] = [...finalScores.values()].map(s => ({
+          clientId: s.accountId,
+          score: s.score,
+          tier: s.tier,
+          scoreDate: s.date,
+        }));
+        scoresExported = await exportScoresToSql(
+          config.sqlConnectionString, config.sqlLogin, config.sqlPassword, exportRows
+        );
+        log(`Exported ${scoresExported} scores to [analytics].[AccountHealthScores] for PowerBI`);
+      } catch (err: any) {
+        const msg = `SQL score export failed (non-fatal): ${err?.message ?? err}`;
+        log(msg);
+        errors.push(msg);
+      }
+    }
+
+    return { synced: companies.length, scored, failed, zendeskFetched, intercomFetched, scoresExported, errors };
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    return { synced: 0, scored: 0, failed: 0, zendeskFetched: 0, intercomFetched: 0, errors: [msg] };
+    return { synced: 0, scored: 0, failed: 0, zendeskFetched: 0, intercomFetched: 0, scoresExported: 0, errors: [msg] };
   }
 }
 
