@@ -39,6 +39,13 @@
 
 ---
 
+### 2026-06-10 — PowerBI health score export
+
+- New SQL table `[analytics].[AccountHealthScores]` (ClientId, Score, Tier, ScoreDate, UpdatedAt) in AccountsControl — DDL: `backend/scripts/sql/create-account-health-scores.sql` (already applied to the DB).
+- `runSync()` now exports the latest score snapshot to SQL after scoring (snapshot replace, non-fatal on failure). `SyncResult.scoresExported` added.
+- Smoke test: `npm run smoke:sql-scores` (real traffic — Table Storage read + live SQL write + read-back). Verified against live DB 2026-06-10: 35/35 rows.
+- Spec: `docs/superpowers/specs/2026-06-10-powerbi-scores-export-design.md`.
+
 ### 2026-05-18 — HubSpot + Portal links in detail panel
 
 **Changes:**

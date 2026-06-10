@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cd backend
 npm run build        # tsc -> dist/
 npm start            # func start
-npm test             # jest (183 tests, 13 suites)
+npm test             # jest (225 tests, 17 suites)
 
 # Frontend
 cd frontend
@@ -35,7 +35,7 @@ Entry point `src/index.ts` imports all function modules as side effects.
 - `AccountsApi.ts` - `GET /api/accounts` (list, CSM-filtered), `GET /api/accounts/{id}` (detail), `PATCH /api/accounts/{id}` (admin/supervisor: update ARR/licences). Auth required on all.
 - `MappingApi.ts` - `GET /api/mapping`, `POST /api/mapping`, `DELETE /api/mapping/{id}`. All authenticated roles (admin/supervisor/csm).
 - `SyncTrigger.ts` - `POST /api/sync` (admin only, returns 202, fire-and-forget), `GET /api/sync` (sync status). Uses `SyncStatusStore` to track running/completed/failed state.
-- `SyncRunner.ts` - Timer trigger (2 AM UTC daily) + `runSync()` export. Orchestrates: SQL Server → accounts table, Amplitude → health scores, Zendesk → penalties.
+- `SyncRunner.ts` - Timer trigger (2 AM UTC daily) + `runSync()` export. Orchestrates: SQL Server → accounts table, Amplitude → health scores, Zendesk → penalties. After scoring, exports the latest score per account to SQL `[analytics].[AccountHealthScores]` for PowerBI (snapshot replace; non-fatal on failure).
 - `UsersApi.ts` - `GET /api/me` (current user), `GET /api/users`, `POST /api/users`, `DELETE /api/users?email=...`. Admin only (except `/api/me`).
 
 **Auth** (`src/auth.ts`):
@@ -126,6 +126,8 @@ Primary data source: SQL Server view `[analytics].[ClientsOverview]` on `ffzf1th
 SQL sync auto-populates Amplitude aliases and licence counts. Alias sync only creates new mappings — existing mappings are never overwritten (to preserve case corrections for Amplitude's case-sensitive matching). Licence counts are always overwritten from SQL (source of truth) — manual PATCH edits are temporary overrides reverted on next sync.
 
 **Account key:** `accountId` is the `ClientId` GUID from the SQL view (lowercased). Each row in `[analytics].[ClientsOverview]` is a separate account (divisions/departments within the same company get their own account). The old `HubSpotCompanyId` is stored as `hubspotCompanyId` for reference.
+
+**PowerBI export:** after every sync, the latest score per account is written to `[analytics].[AccountHealthScores]` in the same `AccountsControl` database (full snapshot replace: DELETE + bulk INSERT). PowerBI joins it to `[analytics].[ClientsOverview]` on `ClientId`. One-time setup: run `backend/scripts/sql/create-account-health-scores.sql` as admin (CREATE + GRANT SELECT/INSERT/DELETE to the app login). Verify with `npm run smoke:sql-scores`.
 
 ## Env vars
 
